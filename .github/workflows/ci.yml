@@ -5,6 +5,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0 # much smaller target/, faster builds
 
 jobs:
   frontend:
@@ -26,7 +28,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
-      # tauri::generate_context! needs frontendDist at compile time.
       - uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
@@ -43,25 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: frontend-dist
-          path: dist
-
-      - name: Install Tauri system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libxdo-dev \
-            build-essential \
-            pkg-config
-
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
         with:
           components: clippy
 
@@ -78,12 +61,16 @@ jobs:
         working-directory: src-tauri
         run: cargo check --all-targets --all-features
 
+      # upload-artifact drops permissions (build scripts lose +x), so ship a
+      # tarball, which also keeps mtimes so cargo sees everything as fresh.
+      - name: Pack target
+        run: tar -C src-tauri -I 'zstd -T0 -3' -cf target.tar.zst target
+
       - uses: actions/upload-artifact@v4
         with:
           name: rust-target
-          path: src-tauri/target
-          include-hidden-files: true # .fingerprint is a hidden dir
-          compression-level: 1
+          path: target.tar.zst
+          compression-level: 0 # already compressed
           if-no-files-found: error
           retention-days: 1
 
@@ -94,32 +81,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v4
+      - uses: ./.github/actions/setup-rust
         with:
-          name: frontend-dist
-          path: dist
+          components: clippy
 
       - uses: actions/download-artifact@v4
         with:
           name: rust-target
-          path: src-tauri/target
 
-      - name: Install Tauri system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libxdo-dev \
-            build-essential \
-            pkg-config
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+      - name: Unpack target
+        run: tar -C src-tauri -I zstd -xf target.tar.zst
 
       - name: Clippy
         working-directory: src-tauri
@@ -132,30 +103,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: frontend-dist
-          path: dist
+      - uses: ./.github/actions/setup-rust
 
       - uses: actions/download-artifact@v4
         with:
           name: rust-target
-          path: src-tauri/target
 
-      - name: Install Tauri system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libxdo-dev \
-            build-essential \
-            pkg-config
-
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Unpack target
+        run: tar -C src-tauri -I zstd -xf target.tar.zst
 
       - name: Tests
         working-directory: src-tauri
