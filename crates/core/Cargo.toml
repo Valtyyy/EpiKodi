@@ -10,6 +10,10 @@ ext-protocol = { path = "../ext-protocol" }
 serde.workspace = true
 tokio = { version = "1", features = ["sync"] }
 thiserror = "2"
+ts-rs = { version = "12.0.1", optional = true }
 
 [dev-dependencies]
 serde_json.workspace = true
+
+[features]
+ts = ["dep:ts-rs"]

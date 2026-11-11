@@ -1,17 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
-
-// Local types for now; a later step generates them from Rust with ts-rs.
-interface PingReply {
-  message: string;
-  timestamp_ms: number;
-}
-interface AppError {
-  code: string;
-  message: string;
-  field?: string;
-  suggestion?: string;
-}
+import type { AppError, PingReply } from "@om/shared";
 
 function App() {
   const [name, setName] = useState("");

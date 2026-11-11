@@ -7,8 +7,11 @@ use serde::{Deserialize, Serialize};
 use crate::{AppError, AppEvent, Clock, EventBus};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export))]
 pub struct PingReply {
     pub message: String,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub timestamp_ms: u64,
 }
 

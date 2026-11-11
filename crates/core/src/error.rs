@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 /// Serialised as `{ code, message, field?, suggestion? }`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("{code}: {message}")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export, optional_fields))]
 pub struct AppError {
     pub code: String,
     pub message: String,

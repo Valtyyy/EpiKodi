@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "pnpm --filter tv dev",
     "build": "pnpm -r build",
+    "gen:types": "cargo test -p om-core --features ts export_bindings",
     "tauri": "tauri"
   },
   "devDependencies": {
