@@ -1,5 +1,3 @@
-//! Tauri commands: pure delegation to services.
-
 use om_core::{AppError, PingReply, PingService};
 use tauri::State;
 

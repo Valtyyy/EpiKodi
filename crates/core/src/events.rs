@@ -2,9 +2,12 @@
 
 use tokio::sync::broadcast;
 
+use crate::WindowSettings;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppEvent {
     Pinged { name: String },
+    WindowSettingsChanged(WindowSettings),
 }
 
 #[derive(Clone)]

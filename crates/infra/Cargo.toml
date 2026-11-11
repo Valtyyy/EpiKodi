@@ -7,3 +7,5 @@ publish = false
 
 [dependencies]
 om-core = { path = "../core" }
+serde.workspace = true
+serde_json.workspace = true

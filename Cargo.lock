@@ -1449,6 +1449,8 @@ name = "infra"
 version = "0.1.0"
 dependencies = [
  "om-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
