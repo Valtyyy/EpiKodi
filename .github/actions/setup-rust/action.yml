@@ -12,11 +12,19 @@ runs:
     - name: Install Tauri system dependencies
       shell: bash
       run: |
-        # Retries: runners occasionally fail DNS resolution on the Ubuntu mirrors
-        APT_OPTS="-o Acquire::Retries=5 -o Acquire::http::Timeout=30"
-        for i in 1 2 3; do sudo apt-get $APT_OPTS update && break || sleep 10; done
-        sudo apt-get $APT_OPTS install -y --no-install-recommends \
-          libwebkit2gtk-4.1-dev libgtk-3-dev libssl-dev pkg-config
+        # Runners sometimes hit stale mirrors (404) or DNS failures. Refresh the
+        # index right before each install attempt so we only ask for versions
+        # that currently exist, and bound every attempt with a timeout.
+        APT_OPTS="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
+        for i in 1 2 3; do
+          if sudo timeout 240 apt-get $APT_OPTS update &&
+             sudo timeout 420 apt-get $APT_OPTS install -y --no-install-recommends --fix-missing \
+               libwebkit2gtk-4.1-dev libgtk-3-dev libssl-dev pkg-config; then
+            exit 0
+          fi
+          echo "apt attempt $i failed, retrying in 15s"; sleep 15
+        done
+        exit 1
 
     - uses: dtolnay/rust-toolchain@stable
       with:
