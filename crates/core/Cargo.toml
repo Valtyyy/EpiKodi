@@ -7,3 +7,9 @@ publish = false
 
 [dependencies]
 ext-protocol = { path = "../ext-protocol" }
+serde.workspace = true
+tokio = { version = "1", features = ["sync"] }
+thiserror = "2"
+
+[dev-dependencies]
+serde_json.workspace = true

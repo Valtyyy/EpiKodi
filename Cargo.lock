@@ -2062,6 +2062,10 @@ name = "om-core"
 version = "0.1.0"
 dependencies = [
  "ext-protocol",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
 ]
 
 [[package]]
@@ -2075,6 +2079,7 @@ name = "open-mosaik"
 version = "0.1.0"
 dependencies = [
  "infra",
+ "om-core",
  "player-mpv",
  "remote-api",
  "serde",
