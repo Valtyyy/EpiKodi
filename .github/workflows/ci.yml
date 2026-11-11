@@ -98,10 +98,8 @@ jobs:
           --from ${{ github.event.pull_request.base.sha }}
           --to ${{ github.event.pull_request.head.sha }}
 
-  # Compiles every dependency once (build + check mode) and shares target/
-  # with the clippy and test jobs.
-  build:
-    name: Build Rust deps
+  clippy:
+    name: Clippy
     needs: frontend
     runs-on: ubuntu-latest
     steps:
@@ -111,66 +109,28 @@ jobs:
         with:
           components: clippy
 
-      # Cache across runs; the artifact below shares it across jobs.
+      # Only main writes the cache; PRs restore it (keeps it from being evicted).
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: .
-
-      - name: Compile (build mode, used by tests)
-        run: cargo test --workspace --all-features --no-run
-
-      - name: Compile (check mode, used by clippy)
-        run: cargo check --workspace --all-targets --all-features
-
-      # upload-artifact drops permissions (build scripts lose +x), so ship a
-      # tarball, which also keeps mtimes so cargo sees everything as fresh.
-      - name: Pack target
-        run: tar -I 'zstd -T0 -3' -cf target.tar.zst target
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rust-target
-          path: target.tar.zst
-          compression-level: 0 # already compressed
-          if-no-files-found: error
-          retention-days: 1
-
-  clippy:
-    name: Clippy
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-rust
-        with:
-          components: clippy
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: rust-target
-
-      - name: Unpack target
-        run: tar -I zstd -xf target.tar.zst
+          shared-key: check
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
     name: Tests
-    needs: build
+    needs: frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-rust
 
-      - uses: actions/download-artifact@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          name: rust-target
-
-      - name: Unpack target
-        run: tar -I zstd -xf target.tar.zst
+          shared-key: test
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - uses: pnpm/action-setup@v4
         with:
@@ -189,19 +149,17 @@ jobs:
 
   types:
     name: Types up to date
-    needs: build
+    needs: frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-rust
 
-      - uses: actions/download-artifact@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          name: rust-target
-
-      - name: Unpack target
-        run: tar -I zstd -xf target.tar.zst
+          shared-key: test
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - uses: pnpm/action-setup@v4
         with:
