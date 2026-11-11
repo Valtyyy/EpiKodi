@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { AppError, PingReply } from "@om/shared";
+import { formatError, formatPing } from "./format";
 
 function App() {
   const [name, setName] = useState("");
@@ -10,10 +11,9 @@ function App() {
     e.preventDefault();
     try {
       const reply = await invoke<PingReply>("ping", { name });
-      setStatus(`${reply.message} (${reply.timestamp_ms})`);
+      setStatus(formatPing(reply));
     } catch (err) {
-      const e = err as AppError;
-      setStatus(e.suggestion ? `${e.message}. ${e.suggestion}` : e.message);
+      setStatus(formatError(err as AppError));
     }
   }
 
@@ -22,11 +22,7 @@ function App() {
       <h1>Open Mosaik</h1>
       <form onSubmit={onSubmit}>
         <label htmlFor="ping-name">Name</label>
-        <input
-          id="ping-name"
-          value={name}
-          onChange={(ev) => setName(ev.currentTarget.value)}
-        />
+        <input id="ping-name" value={name} onChange={(ev) => setName(ev.currentTarget.value)} />
         <button type="submit">Ping</button>
       </form>
       <p role="status" aria-live="polite">

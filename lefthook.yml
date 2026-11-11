@@ -1,0 +1,17 @@
+pre-commit:
+  parallel: true
+  commands:
+    prettier:
+      glob: "*.{ts,tsx,js,jsx,json,css,html,md,yml,yaml}"
+      run: pnpm exec prettier --check --ignore-unknown {staged_files}
+    eslint:
+      glob: "*.{ts,tsx,js,jsx}"
+      run: pnpm exec eslint {staged_files}
+    cargo-fmt:
+      glob: "*.rs"
+      run: cargo fmt --all --check
+
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm exec commitlint --edit {1}
