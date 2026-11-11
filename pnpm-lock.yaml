@@ -7,7 +7,46 @@ settings:
 importers:
 
   .:
+    devDependencies:
+      '@tauri-apps/cli':
+        specifier: ^2
+        version: 2.12.4
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
+
+  ui/remote:
     dependencies:
+      '@om/shared':
+        specifier: workspace:*
+        version: link:../shared
+      react:
+        specifier: ^19.1.0
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.3.1(react@19.3.1)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.1.8
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.1.6
+        version: 19.3.0(@types/react@19.3.0)
+      '@vitejs/plugin-react':
+        specifier: ^6.0.2
+        version: 6.2.1(vite@8.3.6)
+      vite:
+        specifier: ^8.0.16
+        version: 8.3.6
+
+  ui/shared: {}
+
+  ui/tv:
+    dependencies:
+      '@om/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@tauri-apps/api':
         specifier: ^2
         version: 2.12.4
@@ -21,9 +60,6 @@ importers:
         specifier: ^19.1.0
         version: 19.3.1(react@19.3.1)
     devDependencies:
-      '@tauri-apps/cli':
-        specifier: ^2
-        version: 2.12.4
       '@types/react':
         specifier: ^19.1.8
         version: 19.3.0
@@ -33,9 +69,6 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.2
         version: 6.2.1(vite@8.3.6)
-      typescript:
-        specifier: ~6.0.3
-        version: 6.0.3
       vite:
         specifier: ^8.0.16
         version: 8.3.6
