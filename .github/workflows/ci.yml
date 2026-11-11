@@ -18,6 +18,7 @@ jobs:
   frontend:
     name: Build frontend
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -48,6 +49,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -76,6 +78,7 @@ jobs:
     name: Commitlint
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -102,6 +105,7 @@ jobs:
     name: Clippy
     needs: frontend
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -109,19 +113,18 @@ jobs:
         with:
           components: clippy
 
-      # Only main writes the cache; PRs restore it (keeps it from being evicted).
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: check
-          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
-    name: Tests
+    name: Tests + types
     needs: frontend
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -130,7 +133,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: test
-          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - uses: pnpm/action-setup@v4
         with:
@@ -146,31 +148,5 @@ jobs:
 
       # Rust (all features) + Vitest, offline.
       - run: pnpm test
-
-  types:
-    name: Types up to date
-    needs: frontend
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-rust
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: test
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - run: pnpm install --frozen-lockfile
 
       - run: bash scripts/check-types.sh
