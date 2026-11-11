@@ -11,18 +11,17 @@ Les noms ci-dessous sont ceux des jobs de `.github/workflows/ci.yml` (champ `nam
 | `Build frontend`     | `pnpm build` de `ui/tv`, `ui/remote`, `ui/shared`                 |
 | `Lint`               | `cargo fmt --check`, Prettier, ESLint, `tsc`                      |
 | `Clippy`             | `cargo clippy --workspace --all-targets --all-features -D warnings` |
-| `Tests`              | `pnpm test` (Rust + Vitest, hors ligne)                           |
-| `Types up to date`   | `scripts/check-types.sh` (bindings ts-rs à jour)                  |
+| `Tests + types`      | `pnpm test` (Rust + Vitest, hors ligne) puis `scripts/check-types.sh` (bindings ts-rs à jour) |
 | `Commitlint`         | Conventional Commits sur tous les commits de la PR                |
 
-`Build Rust deps` est un job intermédiaire (partage de `target/`) : inutile de le rendre obligatoire, `Clippy` et `Tests` en dépendent.
+`Clippy` et `Tests + types` dépendent de `Build frontend` (artefact `frontend-dist`). Les tests et la vérification des types partagent un seul job pour éviter un second `apt-get` et une seconde compilation.
 
 ## Via l'interface
 
 1. Dépôt GitHub, Settings, Branches, Add branch ruleset (ou Add classic branch protection rule).
 2. Cible : `main`.
 3. Cocher : Require a pull request before merging, Require status checks to pass, Require branches to be up to date before merging.
-4. Ajouter les six checks du tableau ci-dessus.
+4. Ajouter les cinq checks du tableau ci-dessus.
 5. Optionnel : Block force pushes, Do not allow bypassing the above settings.
 
 Un check n'apparaît dans la recherche qu'après avoir tourné au moins une fois sur le dépôt.
@@ -40,8 +39,7 @@ gh api -X PUT repos/OWNER/REPO/branches/main/protection --input - <<'JSON'
       "Build frontend",
       "Lint",
       "Clippy",
-      "Tests",
-      "Types up to date",
+      "Tests + types",
       "Commitlint"
     ]
   },
