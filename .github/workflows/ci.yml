@@ -51,20 +51,18 @@ jobs:
       # Cache across runs; the artifact below shares it across jobs.
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: .
 
       - name: Compile (build mode, used by tests)
-        working-directory: src-tauri
-        run: cargo test --all-features --no-run
+        run: cargo test --workspace --all-features --no-run
 
       - name: Compile (check mode, used by clippy)
-        working-directory: src-tauri
-        run: cargo check --all-targets --all-features
+        run: cargo check --workspace --all-targets --all-features
 
       # upload-artifact drops permissions (build scripts lose +x), so ship a
       # tarball, which also keeps mtimes so cargo sees everything as fresh.
       - name: Pack target
-        run: tar -C src-tauri -I 'zstd -T0 -3' -cf target.tar.zst target
+        run: tar -I 'zstd -T0 -3' -cf target.tar.zst target
 
       - uses: actions/upload-artifact@v4
         with:
@@ -90,11 +88,10 @@ jobs:
           name: rust-target
 
       - name: Unpack target
-        run: tar -C src-tauri -I zstd -xf target.tar.zst
+        run: tar -I zstd -xf target.tar.zst
 
       - name: Clippy
-        working-directory: src-tauri
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
     name: Tests
@@ -110,8 +107,7 @@ jobs:
           name: rust-target
 
       - name: Unpack target
-        run: tar -C src-tauri -I zstd -xf target.tar.zst
+        run: tar -I zstd -xf target.tar.zst
 
       - name: Tests
-        working-directory: src-tauri
-        run: cargo test --all-features
+        run: cargo test --workspace --all-features

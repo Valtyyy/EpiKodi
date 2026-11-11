@@ -905,6 +905,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ext-host"
+version = "0.1.0"
+dependencies = [
+ "ext-protocol",
+]
+
+[[package]]
+name = "ext-protocol"
+version = "0.1.0"
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1663,6 +1674,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "infra"
+version = "0.1.0"
+dependencies = [
+ "om-core",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2294,6 +2312,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "om-core"
+version = "0.1.0"
+dependencies = [
+ "ext-protocol",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2314,6 +2339,9 @@ dependencies = [
 name = "open-mosaik"
 version = "0.1.0"
 dependencies = [
+ "infra",
+ "player-mpv",
+ "remote-api",
  "serde",
  "serde_json",
  "tauri",
@@ -2472,6 +2500,13 @@ name = "pkg-config"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
+
+[[package]]
+name = "player-mpv"
+version = "0.1.0"
+dependencies = [
+ "om-core",
+]
 
 [[package]]
 name = "plist"
@@ -2714,6 +2749,13 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+
+[[package]]
+name = "remote-api"
+version = "0.1.0"
+dependencies = [
+ "om-core",
+]
 
 [[package]]
 name = "reqwest"
