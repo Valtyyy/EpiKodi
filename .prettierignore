@@ -1,0 +1,9 @@
+ui/shared/src/generated
+target
+dist
+node_modules
+pnpm-lock.yaml
+Cargo.lock
+src-tauri/gen
+*.md
+.claude

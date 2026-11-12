@@ -2,6 +2,12 @@ name: CI
 
 on:
   push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -11,7 +17,8 @@ env:
 jobs:
   frontend:
     name: Build frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -26,58 +33,79 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
+      # -r builds in dependency order; ui/remote is built here, before any Rust
+      # job, and shared as an artifact for rust-embed.
       - run: pnpm build
 
       - uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
-          path: dist
+          path: |
+            ui/tv/dist
+            ui/remote/dist
           if-no-files-found: error
           retention-days: 1
 
-  # Compiles every dependency once (build + check mode) and shares target/
-  # with the clippy and test jobs.
-  build:
-    name: Build Rust deps
-    needs: frontend
-    runs-on: ubuntu-latest
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-rust
+      - uses: pnpm/action-setup@v4
         with:
-          components: clippy
+          version: 10
 
-      # Cache across runs; the artifact below shares it across jobs.
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
         with:
-          workspaces: src-tauri
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
-      - name: Compile (build mode, used by tests)
-        working-directory: src-tauri
-        run: cargo test --all-features --no-run
+      - run: pnpm install --frozen-lockfile
 
-      - name: Compile (check mode, used by clippy)
-        working-directory: src-tauri
-        run: cargo check --all-targets --all-features
-
-      # upload-artifact drops permissions (build scripts lose +x), so ship a
-      # tarball, which also keeps mtimes so cargo sees everything as fresh.
-      - name: Pack target
-        run: tar -C src-tauri -I 'zstd -T0 -3' -cf target.tar.zst target
-
-      - uses: actions/upload-artifact@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          name: rust-target
-          path: target.tar.zst
-          compression-level: 0 # already compressed
-          if-no-files-found: error
-          retention-days: 1
+          components: rustfmt
+
+      - run: cargo fmt --all --check
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+
+  commitlint:
+    name: Commitlint
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: >-
+          pnpm commitlint
+          --from ${{ github.event.pull_request.base.sha }}
+          --to ${{ github.event.pull_request.head.sha }}
 
   clippy:
     name: Clippy
-    needs: build
-    runs-on: ubuntu-latest
+    needs: frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -85,33 +113,40 @@ jobs:
         with:
           components: clippy
 
-      - uses: actions/download-artifact@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          name: rust-target
-
-      - name: Unpack target
-        run: tar -C src-tauri -I zstd -xf target.tar.zst
+          shared-key: check
 
       - name: Clippy
-        working-directory: src-tauri
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
-    name: Tests
-    needs: build
-    runs-on: ubuntu-latest
+    name: Tests + types
+    needs: frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-rust
 
-      - uses: actions/download-artifact@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          name: rust-target
+          shared-key: test
 
-      - name: Unpack target
-        run: tar -C src-tauri -I zstd -xf target.tar.zst
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
-      - name: Tests
-        working-directory: src-tauri
-        run: cargo test --all-features
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      # Rust (all features) + Vitest, offline.
+      - run: pnpm test
+
+      - run: bash scripts/check-types.sh
