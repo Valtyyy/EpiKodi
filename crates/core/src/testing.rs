@@ -6,7 +6,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
 
-use crate::{AppError, Clock, SettingsRepository, WindowSettings, WindowSettingsStore};
+use crate::{
+    AppError, Clock, Environment, SettingsRepository, WindowSettings, WindowSettingsStore,
+};
 
 /// Clock that only moves when told to.
 pub struct ManualClock(AtomicU64);
@@ -81,5 +83,25 @@ impl SettingsRepository for MemorySettingsRepository {
     async fn save(&self, key: &str, raw_json: &str) -> Result<(), AppError> {
         self.put_raw(key, raw_json);
         Ok(())
+    }
+}
+
+/// In-memory `Environment`.
+#[derive(Default)]
+pub struct MemoryEnvironment(Mutex<BTreeMap<String, String>>);
+
+impl MemoryEnvironment {
+    pub fn with(vars: &[(&str, &str)]) -> Self {
+        Self(Mutex::new(
+            vars.iter()
+                .map(|(k, v)| ((*k).into(), (*v).into()))
+                .collect(),
+        ))
+    }
+}
+
+impl Environment for MemoryEnvironment {
+    fn var(&self, name: &str) -> Option<String> {
+        self.0.lock().unwrap().get(name).cloned()
     }
 }

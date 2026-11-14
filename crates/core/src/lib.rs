@@ -13,8 +13,9 @@ pub use error::AppError;
 pub use events::{AppEvent, EventBus};
 pub use ping::{PingReply, PingService};
 pub use settings::{
-    ApplyMoment, SettingDescriptor, SettingKind, SettingValue, Settings, SettingsPatch,
-    SettingsRepository, SettingsService, SettingsView,
+    ApplyMoment, Environment, SettingDescriptor, SettingKind, SettingSource, SettingValue,
+    SettingWarning, Settings, SettingsMeta, SettingsPatch, SettingsRepository, SettingsService,
+    SettingsView, env_var_name,
 };
 pub use window::{
     MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, WindowService, WindowSettings, WindowSettingsStore,

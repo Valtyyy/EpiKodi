@@ -72,7 +72,42 @@ pub struct SettingDescriptor {
     pub visible: bool,
 }
 
+/// Where the effective value of a setting comes from. Priority: env > stored > default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export))]
+pub enum SettingSource {
+    Env,
+    Stored,
+    Default,
+}
+
+/// A value found in the environment or the database that was ignored.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export))]
+pub struct SettingWarning {
+    pub key: String,
+    pub message: String,
+}
+
 impl SettingKind {
+    /// Parses an environment string (not JSON). The result still needs `validate`.
+    pub fn parse_plain(&self, raw: &str) -> Option<SettingValue> {
+        let raw = raw.trim();
+        match self {
+            Self::Bool => match raw.to_ascii_lowercase().as_str() {
+                "true" | "1" => Some(SettingValue::Bool(true)),
+                "false" | "0" => Some(SettingValue::Bool(false)),
+                _ => None,
+            },
+            Self::Int { .. } => raw.parse().ok().map(SettingValue::Int),
+            Self::Choice { .. } => Some(SettingValue::Choice(raw.to_owned())),
+            Self::Text { .. } => Some(SettingValue::Text(raw.to_owned())),
+        }
+    }
+
     /// Checks type and bounds. The `suggestion` tells the user what is accepted.
     pub fn validate(&self, key: &str, value: &SettingValue) -> Result<(), AppError> {
         match (self, value) {
