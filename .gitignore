@@ -29,3 +29,8 @@ target/
 # Spikes lockfiles (noise)
 spikes/**/Cargo.lock
 spikes/**/gen/
+
+# Local secrets (§12): never commit
+.env
+.env.*
+!.env.example

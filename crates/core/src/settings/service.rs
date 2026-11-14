@@ -8,7 +8,8 @@ use tokio::sync::{Mutex as AsyncMutex, watch};
 
 use super::catalog::Settings;
 use super::model::{
-    SettingEntry, SettingSource, SettingValue, SettingWarning, SettingsPatch, SettingsSnapshot,
+    ApplyMoment, SettingEntry, SettingSource, SettingValue, SettingWarning, SettingsPatch,
+    SettingsSnapshot,
 };
 use super::view::SettingsView;
 use crate::{
@@ -20,7 +21,13 @@ use crate::{
 #[async_trait]
 pub trait SettingsRepository: Send + Sync {
     async fn load_all(&self) -> Result<Vec<(String, String)>, AppError>;
-    async fn save(&self, key: &str, raw_json: &str) -> Result<(), AppError>;
+    /// Writes every entry or none: a failure must leave storage unchanged.
+    async fn save_many(&self, entries: &[(String, String)]) -> Result<(), AppError>;
+
+    async fn save(&self, key: &str, raw_json: &str) -> Result<(), AppError> {
+        self.save_many(&[(key.to_owned(), raw_json.to_owned())])
+            .await
+    }
 }
 
 /// Process environment, behind a port so `core` does no ambient I/O.
@@ -76,7 +83,21 @@ impl SettingsService {
         env: Arc<dyn Environment>,
         secrets: Arc<dyn SecretStore>,
     ) -> Self {
-        let mut meta = SettingsMeta::default();
+        Self::load_with_warnings(repo, env, secrets, Vec::new()).await
+    }
+
+    /// Like [`load`](Self::load), for a caller that already knows about a
+    /// problem (e.g. it had to fall back to a throw-away repository).
+    pub async fn load_with_warnings(
+        repo: Arc<dyn SettingsRepository>,
+        env: Arc<dyn Environment>,
+        secrets: Arc<dyn SecretStore>,
+        initial_warnings: Vec<SettingWarning>,
+    ) -> Self {
+        let mut meta = SettingsMeta {
+            warnings: initial_warnings,
+            ..SettingsMeta::default()
+        };
         let stored: BTreeMap<String, String> = match repo.load_all().await {
             Ok(rows) => rows.into_iter().collect(),
             Err(_) => {
@@ -224,12 +245,13 @@ impl SettingsService {
     }
 
     /// The effective secret (env > keyring) for backend consumers. Never
-    /// reaches the UI. A keyring failure reads as "not configured".
-    pub async fn secret(&self, key: SecretKey) -> Option<SecretValue> {
+    /// reaches the UI. A keyring failure is an error, not "not configured",
+    /// so the caller can tell the user why.
+    pub async fn secret(&self, key: SecretKey) -> Result<Option<SecretValue>, AppError> {
         if let Some(v) = self.env_secret(key) {
-            return Some(v);
+            return Ok(Some(v));
         }
-        self.secrets.get(key).await.ok().flatten()
+        self.secrets.get(key).await.map_err(secret_app_error)
     }
 
     fn ensure_secret_writable(&self, key: SecretKey) -> Result<(), AppError> {
@@ -292,6 +314,7 @@ impl SettingsService {
         {
             let meta = self.meta.lock().unwrap_or_else(PoisonError::into_inner);
             for key in patch.iter().map(|c| &c.key) {
+                ensure_plain_update(key)?;
                 if meta.locks.contains_key(key) {
                     return Err(
                         AppError::validation(key, "Réglage imposé par l'environnement.")
@@ -307,12 +330,15 @@ impl SettingsService {
         for c in &patch {
             next.set(&c.key, &c.value)?;
         }
+        let mut rows = Vec::with_capacity(patch.len());
         for key in patch.iter().map(|c| &c.key) {
             let Some(value) = next.get(key) else { continue };
             let raw = serde_json::to_string(&value)
                 .map_err(|e| AppError::internal(format!("sérialisation du réglage : {e}")))?;
-            self.repo.save(key, &raw).await?;
+            rows.push((key.clone(), raw));
         }
+        // One atomic write: memory and broadcast only change once storage did.
+        self.repo.save_many(&rows).await?;
         {
             let mut meta = self.meta.lock().unwrap_or_else(PoisonError::into_inner);
             for key in patch.iter().map(|c| &c.key) {
@@ -323,6 +349,25 @@ impl SettingsService {
         let next = Arc::new(next);
         self.tx.send_replace(next.clone());
         Ok(next)
+    }
+}
+
+/// Settings applied with `VerifiedRollback` need a dedicated service that
+/// proves the new value works (e.g. binds the new port) before saving it.
+fn ensure_apply_moment_allows_update(key: &str, apply: ApplyMoment) -> Result<(), AppError> {
+    if apply == ApplyMoment::VerifiedRollback {
+        return Err(
+            AppError::validation(key, "Ce réglage ne peut pas être modifié directement.")
+                .with_suggestion("Il est appliqué puis vérifié par un service dédié."),
+        );
+    }
+    Ok(())
+}
+
+fn ensure_plain_update(key: &str) -> Result<(), AppError> {
+    match Settings::descriptors().into_iter().find(|d| d.key == key) {
+        Some(d) => ensure_apply_moment_allows_update(key, d.apply),
+        None => Ok(()),
     }
 }
 
@@ -622,7 +667,10 @@ mod tests {
         let rendered = format!("{status:?}{}", serde_json::to_string(&status).unwrap());
         assert!(!rendered.contains("s3cr3t"));
         assert!(!format!("{:?}", SecretValue::new("s3cr3t-value")).contains("s3cr3t"));
-        assert_eq!(svc.secret(KEY).await.unwrap().expose(), "s3cr3t-value");
+        assert_eq!(
+            svc.secret(KEY).await.unwrap().unwrap().expose(),
+            "s3cr3t-value"
+        );
     }
 
     #[tokio::test]
@@ -639,7 +687,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.field.as_deref(), Some("tmdb_api_key"));
         assert!(svc.clear_secret(KEY).await.is_err());
-        assert_eq!(svc.secret(KEY).await.unwrap().expose(), "from-env");
+        assert_eq!(svc.secret(KEY).await.unwrap().unwrap().expose(), "from-env");
         assert_eq!(store.calls(), 0);
     }
 
@@ -686,7 +734,7 @@ mod tests {
         let status = svc.clear_secret(KEY).await.unwrap();
         assert!(!status.configured);
         assert_eq!(status.source, SecretSource::None);
-        assert!(svc.secret(KEY).await.is_none());
+        assert!(svc.secret(KEY).await.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -722,5 +770,59 @@ mod tests {
     async fn secrets_status_lists_every_key() {
         let (svc, _) = secret_service(&[]).await;
         assert_eq!(svc.secrets_status().await.len(), SecretKey::ALL.len());
+    }
+
+    #[test]
+    fn verified_rollback_settings_are_not_directly_updatable() {
+        let err =
+            ensure_apply_moment_allows_update("x.y", ApplyMoment::VerifiedRollback).unwrap_err();
+        assert_eq!(err.field.as_deref(), Some("x.y"));
+        assert!(ensure_apply_moment_allows_update("x.y", ApplyMoment::Immediate).is_ok());
+    }
+
+    #[tokio::test]
+    async fn secret_reports_keyring_failure_instead_of_none() {
+        let (svc, store) = secret_service(&[]).await;
+        store.set_locked(true);
+        let err = svc.secret(KEY).await.unwrap_err();
+        assert_eq!(err.code, "secret_keyring_locked");
+    }
+
+    #[tokio::test]
+    async fn failed_write_leaves_memory_and_subscribers_unchanged() {
+        let (svc, repo) = service().await;
+        let mut view = svc.view();
+        let before = svc.current();
+        repo.set_fail_writes(true);
+        let result = svc
+            .update(vec![
+                (
+                    "interface.window_decorations".into(),
+                    SettingValue::Bool(false),
+                ),
+                ("library.scan_parallelism".into(), SettingValue::Int(4)),
+            ])
+            .await;
+        assert!(result.is_err());
+        assert_eq!(svc.current(), before);
+        assert_eq!(view.current(), before);
+        assert!(repo.raw("library.scan_parallelism").is_none());
+        let pending = tokio::time::timeout(std::time::Duration::from_millis(20), view.changed());
+        assert!(pending.await.is_err());
+    }
+
+    #[tokio::test]
+    async fn initial_warnings_are_kept_in_the_snapshot() {
+        let svc = SettingsService::load_with_warnings(
+            Arc::new(MemorySettingsRepository::default()),
+            Arc::new(MemoryEnvironment::default()),
+            Arc::new(MemorySecretStore::default()),
+            vec![SettingWarning {
+                key: "storage".into(),
+                message: "x".into(),
+            }],
+        )
+        .await;
+        assert_eq!(svc.snapshot().await.warnings.len(), 1);
     }
 }
