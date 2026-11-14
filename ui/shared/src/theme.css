@@ -1,0 +1,34 @@
+/*
+ * Semantic design tokens (ARCHITECTURE.md section 6). Components use only these
+ * names (bg-surface, text-content, ...), never a raw palette, so the theme can
+ * change without touching the code. Contrast ratios are measured on the pairs
+ * below and must stay >= 4.5:1 (7:1 for content on surface).
+ */
+:root {
+  --om-surface: #0e1116;
+  --om-surface-raised: #1b212b;
+  --om-content: #f3f5f8;
+  --om-content-muted: #aab2c0;
+  --om-accent: #6cb4ff;
+  --om-accent-content: #08111d;
+  --om-focus: #ffd24a;
+  --om-danger: #ff8a80;
+}
+
+@theme inline {
+  --color-*: initial;
+  --color-surface: var(--om-surface);
+  --color-surface-raised: var(--om-surface-raised);
+  --color-content: var(--om-content);
+  --color-content-muted: var(--om-content-muted);
+  --color-accent: var(--om-accent);
+  --color-accent-content: var(--om-accent-content);
+  --color-focus: var(--om-focus);
+  --color-danger: var(--om-danger);
+
+  /* 10-foot scale: nothing below 20px. */
+  --text-tv-sm: 1.25rem;
+  --text-tv-md: 1.5rem;
+  --text-tv-lg: 2rem;
+  --text-tv-xl: 3rem;
+}
