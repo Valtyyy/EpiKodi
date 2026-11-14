@@ -28,3 +28,4 @@ target/
 
 # Spikes lockfiles (noise)
 spikes/**/Cargo.lock
+spikes/**/gen/
