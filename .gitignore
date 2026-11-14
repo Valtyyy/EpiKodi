@@ -25,3 +25,6 @@ dist-ssr
 
 # Cargo
 target/
+
+# Spikes lockfiles (noise)
+spikes/**/Cargo.lock
