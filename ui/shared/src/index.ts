@@ -2,3 +2,6 @@
 export type { AppError } from "./generated/AppError";
 export type { PingReply } from "./generated/PingReply";
 export type { WindowSettings } from "./generated/WindowSettings";
+
+export { useRovingGrid } from "./focus";
+export type { GridItemProps, GridPosition, RovingGrid, UseRovingGridOptions } from "./focus";

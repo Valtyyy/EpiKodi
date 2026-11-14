@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@import "@om/shared/theme.css";
+/* Tailwind does not scan workspace dependencies on its own. */
+@source "../../shared/src";
+
+html,
+body {
+  @apply bg-surface text-content text-tv-md;
+}
