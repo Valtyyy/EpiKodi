@@ -32,15 +32,26 @@ impl Clock for ManualClock {
 
 /// In-memory `SettingsRepository` holding raw JSON strings.
 #[derive(Default)]
-pub struct MemorySettingsRepository(Mutex<BTreeMap<String, String>>);
+pub struct MemorySettingsRepository {
+    rows: Mutex<BTreeMap<String, String>>,
+    fail_writes: AtomicBool,
+}
 
 impl MemorySettingsRepository {
     pub fn raw(&self, key: &str) -> Option<String> {
-        self.0.lock().unwrap().get(key).cloned()
+        self.rows.lock().unwrap().get(key).cloned()
     }
 
     pub fn put_raw(&self, key: &str, raw_json: &str) {
-        self.0.lock().unwrap().insert(key.into(), raw_json.into());
+        self.rows
+            .lock()
+            .unwrap()
+            .insert(key.into(), raw_json.into());
+    }
+
+    /// Makes every write fail, to test that nothing changes on a storage error.
+    pub fn set_fail_writes(&self, fail: bool) {
+        self.fail_writes.store(fail, Ordering::SeqCst);
     }
 }
 
@@ -48,7 +59,7 @@ impl MemorySettingsRepository {
 impl SettingsRepository for MemorySettingsRepository {
     async fn load_all(&self) -> Result<Vec<(String, String)>, AppError> {
         Ok(self
-            .0
+            .rows
             .lock()
             .unwrap()
             .iter()
@@ -56,8 +67,14 @@ impl SettingsRepository for MemorySettingsRepository {
             .collect())
     }
 
-    async fn save(&self, key: &str, raw_json: &str) -> Result<(), AppError> {
-        self.put_raw(key, raw_json);
+    async fn save_many(&self, entries: &[(String, String)]) -> Result<(), AppError> {
+        if self.fail_writes.load(Ordering::SeqCst) {
+            return Err(AppError::new("storage", "Écriture impossible (simulée)."));
+        }
+        let mut rows = self.rows.lock().unwrap();
+        for (k, v) in entries {
+            rows.insert(k.clone(), v.clone());
+        }
         Ok(())
     }
 }

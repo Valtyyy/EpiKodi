@@ -15,7 +15,7 @@ pub fn run() {
             // Services first, window after: the window only appears once every
             // service is available in state.
             let data_dir = app.path().app_data_dir()?;
-            let services = tauri::async_runtime::block_on(bootstrap::build(&data_dir))?;
+            let services = tauri::async_runtime::block_on(bootstrap::build(&data_dir));
             bootstrap::register(app, services);
 
             let mut view = app.state::<SettingsService>().view();

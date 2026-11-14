@@ -4,8 +4,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 use infra::{KeyringSecretStore, ProcessEnvironment, SqliteSettingsRepository, SystemClock};
+use om_core::testing::MemorySettingsRepository;
 use om_core::{
-    AppError, Environment, EventBus, PingService, SecretStore, SettingsRepository, SettingsService,
+    AppError, Environment, EventBus, PingService, SecretStore, SettingWarning, SettingsRepository,
+    SettingsService,
 };
 use tauri::Manager;
 
@@ -17,17 +19,48 @@ pub struct Services {
 }
 
 /// Builds the service graph with the real port implementations.
-pub async fn build(data_dir: &Path) -> Result<Services, AppError> {
-    std::fs::create_dir_all(data_dir)
-        .map_err(|e| AppError::new("storage", format!("Dossier de données inaccessible : {e}")))?;
-    let pool = infra::db::open(&data_dir.join("open-mosaik.db")).await?;
-    let repo = Arc::new(SqliteSettingsRepository::new(pool, Arc::new(SystemClock)));
-    Ok(assemble(
+///
+/// Always succeeds (§9: the app must start): if the settings database cannot
+/// be opened, settings live in a throw-away in-memory database and the user is
+/// warned that changes will not be kept.
+pub async fn build(data_dir: &Path) -> Services {
+    let clock = Arc::new(SystemClock);
+    let (repo, warnings) = match open_database(data_dir, clock.clone()).await {
+        Ok(repo) => (repo, Vec::new()),
+        Err(e) => {
+            let warning = SettingWarning {
+                key: "storage".into(),
+                message: format!(
+                    "Base de réglages inaccessible : {}. Les modifications ne seront pas conservées.",
+                    e.message
+                ),
+            };
+            let repo: Arc<dyn SettingsRepository> = match infra::db::open_in_memory().await {
+                Ok(pool) => Arc::new(SqliteSettingsRepository::new(pool, clock)),
+                // Cannot happen short of a broken sqlite build; the plain
+                // in-memory fake keeps the app alive anyway.
+                Err(_) => Arc::new(MemorySettingsRepository::default()),
+            };
+            (repo, vec![warning])
+        }
+    };
+    assemble(
         repo,
         Arc::new(ProcessEnvironment),
         Arc::new(KeyringSecretStore::new()),
+        warnings,
     )
-    .await)
+    .await
+}
+
+async fn open_database(
+    data_dir: &Path,
+    clock: Arc<SystemClock>,
+) -> Result<Arc<dyn SettingsRepository>, AppError> {
+    std::fs::create_dir_all(data_dir)
+        .map_err(|e| AppError::new("storage", format!("dossier de données inaccessible ({e})")))?;
+    let pool = infra::db::open(&data_dir.join("open-mosaik.db")).await?;
+    Ok(Arc::new(SqliteSettingsRepository::new(pool, clock)))
 }
 
 /// Wires services from already-built ports; tests call it with fakes.
@@ -35,11 +68,12 @@ async fn assemble(
     repo: Arc<dyn SettingsRepository>,
     env: Arc<dyn Environment>,
     secrets: Arc<dyn SecretStore>,
+    warnings: Vec<SettingWarning>,
 ) -> Services {
     let events = EventBus::new();
     Services {
         ping: PingService::new(Arc::new(SystemClock), events.clone()),
-        settings: SettingsService::load(repo, env, secrets).await,
+        settings: SettingsService::load_with_warnings(repo, env, secrets, warnings).await,
         events,
     }
 }
@@ -70,6 +104,7 @@ mod tests {
             Arc::new(MemorySettingsRepository::default()),
             Arc::new(MemoryEnvironment::default()),
             Arc::new(MemorySecretStore::default()),
+            Vec::new(),
         )
         .await;
         register(&app, services);
@@ -80,6 +115,30 @@ mod tests {
         assert!(
             app.try_state::<SettingsService>().is_some(),
             "SettingsService"
+        );
+    }
+}
+
+#[cfg(test)]
+mod fallback_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn unopenable_database_falls_back_with_a_storage_warning() {
+        // A regular file where the data directory should be: creation fails.
+        let blocker = std::env::temp_dir().join(format!("om-blocker-{}", std::process::id()));
+        std::fs::write(&blocker, b"x").unwrap();
+        let services = build(&blocker.join("sub")).await;
+        let snapshot = services.settings.snapshot().await;
+        std::fs::remove_file(&blocker).unwrap();
+        let w = snapshot
+            .warnings
+            .iter()
+            .find(|w| w.key == "storage")
+            .unwrap();
+        assert!(
+            w.message
+                .contains("Les modifications ne seront pas conservées")
         );
     }
 }
