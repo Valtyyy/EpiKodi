@@ -1,0 +1,19 @@
+[package]
+name = "ext-host-sandbox"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Standalone: not part of the root workspace (root excludes `spikes`).
+[workspace]
+
+[[bin]]
+name = "ext-host"
+path = "src/main.rs"
+
+[dependencies]
+rquickjs = "0.14"
+landlock = "0.4"
+seccompiler = "0.5"
+libc = "0.2"
+serde_json = "1"
