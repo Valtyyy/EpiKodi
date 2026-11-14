@@ -29,7 +29,7 @@ Sur Debian / Ubuntu (testé sur Debian 13) :
 sudo apt-get update
 sudo apt-get install -y build-essential pkg-config libssl-dev libgtk-3-dev \
   libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev \
-  librsvg2-dev libayatana-appindicator3-dev libxdo-dev
+  librsvg2-dev libayatana-appindicator3-dev libxdo-dev libdbus-1-dev
 ```
 
 Pour les autres distributions, voir la [documentation Tauri](https://tauri.app/start/prerequisites/#linux).
