@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::AppError;
+use crate::{AppError, SecretStatus};
 
 /// Wire and storage representation of one setting value.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -16,8 +16,55 @@ pub enum SettingValue {
     Choice(String),
 }
 
-/// Ordered list of `(key, value)` changes, applied atomically.
-pub type SettingsPatch = Vec<(String, SettingValue)>;
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export))]
+pub struct SettingChange {
+    pub key: String,
+    pub value: SettingValue,
+}
+
+/// Ordered changes, applied atomically.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export))]
+pub struct SettingsPatch {
+    pub changes: Vec<SettingChange>,
+}
+
+impl From<Vec<(String, SettingValue)>> for SettingsPatch {
+    fn from(pairs: Vec<(String, SettingValue)>) -> Self {
+        Self {
+            changes: pairs
+                .into_iter()
+                .map(|(key, value)| SettingChange { key, value })
+                .collect(),
+        }
+    }
+}
+
+/// One setting as the settings screen needs it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export, optional_fields))]
+pub struct SettingEntry {
+    pub descriptor: SettingDescriptor,
+    pub value: SettingValue,
+    pub source: SettingSource,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locked_reason: Option<String>,
+}
+
+/// Everything the settings screen displays. Contains no secret value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export))]
+pub struct SettingsSnapshot {
+    /// Includes hidden settings; filter on `descriptor.visible`.
+    pub entries: Vec<SettingEntry>,
+    pub secrets: Vec<SecretStatus>,
+    pub warnings: Vec<SettingWarning>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

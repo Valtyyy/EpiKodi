@@ -7,8 +7,8 @@ mod view;
 
 pub use catalog::Settings;
 pub use model::{
-    ApplyMoment, SettingDescriptor, SettingKind, SettingSource, SettingValue, SettingWarning,
-    SettingsPatch,
+    ApplyMoment, SettingChange, SettingDescriptor, SettingEntry, SettingKind, SettingSource,
+    SettingValue, SettingWarning, SettingsPatch, SettingsSnapshot,
 };
 pub use service::{Environment, SettingsMeta, SettingsRepository, SettingsService, env_var_name};
 pub use view::SettingsView;

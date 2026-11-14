@@ -112,7 +112,7 @@ mod tests {
             Arc::new(om_core::testing::MemorySecretStore::default()),
         )
         .await;
-        assert_eq!(svc.snapshot().network_timeout_ms, 10_000);
+        assert_eq!(svc.current().network_timeout_ms, 10_000);
         assert_eq!(
             svc.meta().source("network.timeout_ms"),
             SettingSource::Default
@@ -134,6 +134,6 @@ mod tests {
         .await
         .unwrap();
         let reloaded = SettingsService::load(repo, env, secrets).await;
-        assert_eq!(reloaded.snapshot().scan_parallelism, 5);
+        assert_eq!(reloaded.current().scan_parallelism, 5);
     }
 }

@@ -28,3 +28,4 @@ remote-api = { path = "../crates/remote-api" }
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
+tokio = { workspace = true, features = ["rt", "macros"] }

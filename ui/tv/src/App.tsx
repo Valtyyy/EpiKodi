@@ -1,7 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { AppError, PingReply, WindowSettings } from "@om/shared";
+import type { AppError, PingReply, SettingsSnapshot } from "@om/shared";
 import { formatError, formatPing } from "./format";
+
+const DECORATIONS_KEY = "interface.window_decorations";
+
+function readDecorations(snapshot: SettingsSnapshot): boolean {
+  const entry = snapshot.entries.find((e) => e.descriptor.key === DECORATIONS_KEY);
+  return entry?.value.type === "bool" ? entry.value.value : true;
+}
 
 function App() {
   const [name, setName] = useState("");
@@ -10,17 +17,19 @@ function App() {
   const [decorations, setDecorations] = useState(true);
 
   useEffect(() => {
-    invoke<WindowSettings>("get_window_settings")
-      .then((s) => setDecorations(s.decorations))
+    invoke<SettingsSnapshot>("get_settings")
+      .then((s) => setDecorations(readDecorations(s)))
       .catch((err) => setStatus(formatError(err as AppError)));
   }, []);
 
   async function onToggleDecorations(enabled: boolean) {
     try {
-      const next = await invoke<WindowSettings>("set_window_decorations", {
-        decorations: enabled,
+      const next = await invoke<SettingsSnapshot>("update_settings", {
+        patch: {
+          changes: [{ key: DECORATIONS_KEY, value: { type: "bool", value: enabled } }],
+        },
       });
-      setDecorations(next.decorations);
+      setDecorations(readDecorations(next));
     } catch (err) {
       setStatus(formatError(err as AppError));
     }
