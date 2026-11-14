@@ -4,4 +4,4 @@
 //! `#[tauri::command]` macro generates next to each command.
 
 pub mod ping;
-pub mod window;
+pub mod settings;
