@@ -18,3 +18,6 @@ export type { SettingsSnapshot } from "./generated/SettingsSnapshot";
 
 export { useRovingGrid } from "./focus";
 export type { GridItemProps, GridPosition, RovingGrid, UseRovingGridOptions } from "./focus";
+
+export { ApiProvider, useApi, createFakeApiClient } from "./api";
+export type { ApiClient } from "./api";
