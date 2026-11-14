@@ -1,9 +1,12 @@
 //! In-memory fakes of ports, reusable by other crates' tests.
 
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::{AppError, Clock, WindowSettings, WindowSettingsStore};
+use async_trait::async_trait;
+
+use crate::{AppError, Clock, SettingsRepository, WindowSettings, WindowSettingsStore};
 
 /// Clock that only moves when told to.
 pub struct ManualClock(AtomicU64);
@@ -45,6 +48,38 @@ impl WindowSettingsStore for MemoryWindowStore {
 
     fn save(&self, settings: &WindowSettings) -> Result<(), AppError> {
         *self.0.lock().unwrap() = Some(*settings);
+        Ok(())
+    }
+}
+
+/// In-memory `SettingsRepository` holding raw JSON strings.
+#[derive(Default)]
+pub struct MemorySettingsRepository(Mutex<BTreeMap<String, String>>);
+
+impl MemorySettingsRepository {
+    pub fn raw(&self, key: &str) -> Option<String> {
+        self.0.lock().unwrap().get(key).cloned()
+    }
+
+    pub fn put_raw(&self, key: &str, raw_json: &str) {
+        self.0.lock().unwrap().insert(key.into(), raw_json.into());
+    }
+}
+
+#[async_trait]
+impl SettingsRepository for MemorySettingsRepository {
+    async fn load_all(&self) -> Result<Vec<(String, String)>, AppError> {
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect())
+    }
+
+    async fn save(&self, key: &str, raw_json: &str) -> Result<(), AppError> {
+        self.put_raw(key, raw_json);
         Ok(())
     }
 }
