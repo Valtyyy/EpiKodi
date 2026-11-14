@@ -1,0 +1,15 @@
+[package]
+name = "orca-spike"
+version = "0.1.0"
+description = "Spike 2.5: Orca / AT-SPI behaviour of a Tauri 2 (WebKitGTK) page"
+edition = "2024"
+publish = false
+
+# Standalone crate: not part of the root workspace (root has `exclude = ["spikes"]`).
+[workspace]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }

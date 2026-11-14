@@ -7,3 +7,4 @@ Cargo.lock
 src-tauri/gen
 *.md
 .claude
+spikes

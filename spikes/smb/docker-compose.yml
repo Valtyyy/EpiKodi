@@ -1,0 +1,14 @@
+# Samba test server for spike 2.3.
+#   share "secure": NTLM, user tester / secret, guest refused
+#   share "public": guest ok (map to guest = Bad User)
+services:
+  samba:
+    build: ./samba
+    container_name: epikodi-smb-spike
+    cap_add: [NET_ADMIN]          # for `tc qdisc add ... netem` (slow-share test)
+    ports: ["1445:445"]
+    volumes: ["./fixtures:/data:ro"]
+    networks: [smbnet]
+networks:
+  smbnet:
+    name: epikodi-smb-spike

@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/*", "src-tauri"]
+exclude = ["spikes"]
 resolver = "3"
 
 [workspace.package]

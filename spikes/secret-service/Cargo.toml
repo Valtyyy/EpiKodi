@@ -1,0 +1,15 @@
+[package]
+name = "secret-service-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Spike 2.6: Secret Service (GNOME keyring) access for the TMDB API key"
+
+[dependencies]
+# Sync Secret Service backend only: no keyutils, no async runtime, no vendored crypto.
+keyring = { version = "3", default-features = false, features = ["sync-secret-service"] }
+# Read-only lock state of the default collection (status command). Same version as keyring 3.6.3.
+dbus-secret-service = "4.1"
+
+# Standalone crate: not part of the root workspace (root has exclude = ["spikes"]).
+[workspace]

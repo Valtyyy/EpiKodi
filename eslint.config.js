@@ -12,6 +12,7 @@ export default tseslint.config(
       "**/generated/**",
       "src-tauri/**",
       "crates/**",
+      "spikes/**",
       "target/**",
     ],
   },

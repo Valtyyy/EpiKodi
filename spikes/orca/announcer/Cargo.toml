@@ -1,0 +1,15 @@
+[package]
+name = "announcer-spike"
+version = "0.1.0"
+description = "Spike 2.5: Announcer port prototype (aria-live via Orca, or speech-dispatcher fallback)"
+edition = "2024"
+publish = false
+
+# Standalone crate: not part of the root workspace (root has `exclude = ["spikes"]`).
+[workspace]
+
+[dependencies]
+
+[lib]
+name = "announcer"
+path = "src/lib.rs"
