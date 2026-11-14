@@ -995,14 +995,17 @@ Le suivi 1 tombe maintenant : le test vidéo et le test SMB sont à lancer immé
 
 **Vérifié dans la documentation ou le registre :** contraintes de `State` et `Result` pour les commandes asynchrones ; existence de `default_vbox`, `gtk_window` et `PlatformWebview::inner` ; absence de prise en charge de l'embarquement Linux par `tauri-plugin-libmpv` ; verrou global de `pavao` ; lecture par `read_at` de `smb` ; exigence `LC_NUMERIC=C`, ordre de création et risque d'interblocage du rendu mpv ; versions des crates.
 
-**Hypothèses à valider par un test :**
+**Hypothèses testées par l'EPIC 02** (résultats dans `docs/spikes/`) :
 
-- WebKitGTK transparent au-dessus d'une `GtkGLArea` (§5.2).
-- Listage récursif, NTLM et accès invité avec la crate `smb` (§5.3).
-- Orca sur l'interface WebKitGTK (§6).
-- Compatibilité de QuickJS avec seccomp et Landlock après initialisation (§7).
+- WebKitGTK transparent au-dessus d'une `GtkGLArea` (§5.2) : **validé sur AMD**, Wayland et XWayland. Plan A retenu, plan B en repli ([ADR-002](docs/adr/0002-composition-video.md), [spike 2.1](docs/spikes/2.1-composition-video.md)). Intel, NVIDIA et une session X11 native restent à mesurer.
+- Listage récursif, `read_at`, NTLM et accès invité avec la crate `smb` (§5.3) : **validé**, avec des garde-fous : délai externe obligatoire, client recréé après une erreur réseau, invité via `/GUEST` ([ADR-004](docs/adr/0004-client-smb-et-passerelle.md), [spike 2.3](docs/spikes/2.3-smb.md)).
+- Orca sur l'interface WebKitGTK (§6) : **partiel**. Rôles, noms et focus sont exposés, mais aucune région `aria-live` n'émet d'événement AT-SPI. Le port `Announcer` (speech-dispatcher) est probablement nécessaire. À confirmer à l'écoute ([spike 2.5](docs/spikes/2.5-orca.md)).
+- Compatibilité de QuickJS avec seccomp et Landlock après initialisation (§7) : **validé**. Le repli sans Landlock est journalisé ([spike 2.7](docs/spikes/2.7-quickjs-sandbox.md)).
+- Disponibilité du Secret Service sur la machine de salon (§9) : **mesuré**. Trousseau absent ou verrouillé : échec explicite et rapide. Repli `OPEN_MOSAIK_TMDB_API_KEY`. Le cas réel de la connexion automatique reste à confirmer à la main ([spike 2.6](docs/spikes/2.6-secret-service.md)).
+
+**Hypothèses restant à valider par un test :**
+
 - Inclusion de libmpv et de ses dépendances dans l'AppImage (§11).
-- Disponibilité du Secret Service sur la machine de salon, surtout avec une connexion automatique sans déverrouillage du trousseau (§9).
 
 **Décisions à confirmer par le binôme :**
 
