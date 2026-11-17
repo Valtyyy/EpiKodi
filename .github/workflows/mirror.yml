@@ -1,14 +1,12 @@
 name: Mirror
 
-# Mirrors all branches and tags to the Epitech repository.
+# Mirrors the repository to the Epitech repository.
 # Requires the repository secret MIRROR_SSH_PRIVATE_KEY: private half of a
 # deploy key (with write access) registered on the mirror repository.
 
 on:
   push:
-    branches: ["**"]
-    tags: ["**"]
-  delete:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
