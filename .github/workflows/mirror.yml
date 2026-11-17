@@ -1,0 +1,35 @@
+name: Mirror
+
+# Mirrors all branches and tags to the Epitech repository.
+# Requires the repository secrets MIRROR_USERNAME and MIRROR_TOKEN
+# (PAT with write access to the mirror).
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["**"]
+  delete:
+  workflow_dispatch:
+
+concurrency:
+  group: mirror
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    name: Push to mirror
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: yesolutions/mirror-action@v0.7.0
+        with:
+          REMOTE: https://github.com/EpitechPGE3-2026/G-PRO-500-PAR-5-1-professionalwork-51.git
+          GIT_USERNAME: ${{ secrets.MIRROR_USERNAME }}
+          GIT_PASSWORD: ${{ secrets.MIRROR_TOKEN }}
