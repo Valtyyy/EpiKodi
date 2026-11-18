@@ -8,12 +8,14 @@ publish = false
 [dependencies]
 ext-protocol = { path = "../ext-protocol" }
 serde.workspace = true
-tokio = { version = "1", features = ["sync"] }
-thiserror = "2"
-ts-rs = { version = "12.0.1", optional = true }
+serde_json.workspace = true
+async-trait.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+thiserror.workspace = true
+ts-rs = { workspace = true, optional = true }
 
 [dev-dependencies]
-serde_json.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }
 
 [features]
 ts = ["dep:ts-rs"]
