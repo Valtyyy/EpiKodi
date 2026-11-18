@@ -683,7 +683,7 @@ L'interface de salon et le téléphone sont de simples abonnés au même état. 
 
 ## 9. Configuration
 
-Tout réglage utile à l'utilisateur se modifie depuis l'écran **Paramètres**, sans fichier à éditer et sans redémarrage. Les seuils et durées cités ailleurs dans ce document sont des **valeurs par défaut**.
+Tout réglage utile à l'utilisateur se modifie depuis l'écran **Paramètres**, sans fichier à éditer et sans redémarrage. Les seuils et durées cités ailleurs dans ce document sont des **valeurs par défaut**. La décision détaillée (catalogue, priorités, secrets, invariants) est dans [ADR-0008](docs/adr/0008-configuration-a-chaud-et-invariants.md).
 
 ### Où vit chaque réglage
 
@@ -978,7 +978,7 @@ Le suivi 1 tombe maintenant : le test vidéo et le test SMB sont à lancer immé
 | 005 | Extensions : QuickJS, processus séparé, courtier |
 | 006 | HTTP sans TLS sur le LAN, avec limite documentée |
 | 007 | Widgets déclaratifs |
-| 008 | Configuration à chaud, secrets en écriture seule, invariants non configurables |
+| [008](docs/adr/0008-configuration-a-chaud-et-invariants.md) | Configuration à chaud, secrets en écriture seule, invariants non configurables |
 
 ## 15. Écarts avec le scaffold actuel
 
