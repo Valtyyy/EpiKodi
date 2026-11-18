@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useRovingGrid } from "@om/shared";
 import { LAYOUTS, LAYOUT_LABEL, charName, type KeyDef, type LayoutId } from "./layouts";
 
@@ -36,10 +36,13 @@ export function VirtualKeyboard({
   const grid = useRovingGrid({ rowLengths: rows.map((r) => r.length) });
   const { focusActive } = grid;
 
-  // Runs on mount (first key gets focus) and after a layout switch, which can remove the
-  // focused key and leave focus on <body>.
+  // Mount: the keyboard takes focus from whatever opened it. After a layout switch, which
+  // can remove the focused key and leave focus on <body>, only recover if focus was lost.
+  const mounted = useRef(false);
   useEffect(() => {
-    if (!document.activeElement || document.activeElement === document.body) focusActive();
+    const lost = !document.activeElement || document.activeElement === document.body;
+    if (!mounted.current || lost) focusActive();
+    mounted.current = true;
     // focusActive changes on every focus move; only the layout should retrigger this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout]);
