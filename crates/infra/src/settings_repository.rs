@@ -109,6 +109,7 @@ mod tests {
         let svc = SettingsService::load(
             Arc::new(repo),
             Arc::new(om_core::testing::MemoryEnvironment::default()),
+            Arc::new(om_core::testing::MemorySecretStore::default()),
         )
         .await;
         assert_eq!(svc.snapshot().network_timeout_ms, 10_000);
@@ -124,14 +125,15 @@ mod tests {
         let (repo, _) = repo().await;
         let repo = Arc::new(repo);
         let env = Arc::new(om_core::testing::MemoryEnvironment::default());
-        let svc = SettingsService::load(repo.clone(), env.clone()).await;
+        let secrets = Arc::new(om_core::testing::MemorySecretStore::default());
+        let svc = SettingsService::load(repo.clone(), env.clone(), secrets.clone()).await;
         svc.update(vec![(
             "library.scan_parallelism".into(),
             SettingValue::Int(5),
         )])
         .await
         .unwrap();
-        let reloaded = SettingsService::load(repo, env).await;
+        let reloaded = SettingsService::load(repo, env, secrets).await;
         assert_eq!(reloaded.snapshot().scan_parallelism, 5);
     }
 }

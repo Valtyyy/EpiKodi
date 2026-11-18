@@ -9,7 +9,10 @@ use tokio::sync::{Mutex as AsyncMutex, watch};
 use super::catalog::Settings;
 use super::model::{SettingSource, SettingValue, SettingWarning, SettingsPatch};
 use super::view::SettingsView;
-use crate::AppError;
+use crate::{
+    AppError, SecretError, SecretKey, SecretSource, SecretState, SecretStatus, SecretStore,
+    SecretValue,
+};
 
 /// Persistence port. Values are the JSON encoding of a [`SettingValue`].
 #[async_trait]
@@ -53,6 +56,8 @@ impl SettingsMeta {
 #[derive(Clone)]
 pub struct SettingsService {
     repo: Arc<dyn SettingsRepository>,
+    env: Arc<dyn Environment>,
+    secrets: Arc<dyn SecretStore>,
     tx: Arc<watch::Sender<Arc<Settings>>>,
     meta: Arc<Mutex<SettingsMeta>>,
     // Serialises updates so two concurrent patches cannot overwrite each other.
@@ -64,7 +69,11 @@ impl SettingsService {
     /// repository or an invalid value falls back to the next level and is
     /// reported in the warnings, because a bad setting must not stop the app
     /// from starting (and thus from letting the user fix it).
-    pub async fn load(repo: Arc<dyn SettingsRepository>, env: Arc<dyn Environment>) -> Self {
+    pub async fn load(
+        repo: Arc<dyn SettingsRepository>,
+        env: Arc<dyn Environment>,
+        secrets: Arc<dyn SecretStore>,
+    ) -> Self {
         let mut meta = SettingsMeta::default();
         let stored: BTreeMap<String, String> = match repo.load_all().await {
             Ok(rows) => rows.into_iter().collect(),
@@ -122,10 +131,116 @@ impl SettingsService {
         let (tx, _) = watch::channel(Arc::new(settings));
         Self {
             repo,
+            env,
+            secrets,
             tx: Arc::new(tx),
             meta: Arc::new(Mutex::new(meta)),
             write_lock: Arc::new(AsyncMutex::new(())),
         }
+    }
+
+    /// A non-empty environment variable wins and keeps the keyring untouched.
+    fn env_secret(&self, key: SecretKey) -> Option<SecretValue> {
+        self.env
+            .var(key.env_var())
+            .map(SecretValue::new)
+            .filter(|v| !v.is_empty())
+    }
+
+    pub async fn secret_status(&self, key: SecretKey) -> SecretStatus {
+        if self.env_secret(key).is_some() {
+            return SecretStatus {
+                key,
+                configured: true,
+                source: SecretSource::Env,
+                state: SecretState::EnvLocked,
+                message: Some(format!(
+                    "Imposé par la variable d'environnement {}",
+                    key.env_var()
+                )),
+            };
+        }
+        match self.secrets.status(key).await {
+            Ok(configured) => SecretStatus {
+                key,
+                configured,
+                source: if configured {
+                    SecretSource::Keyring
+                } else {
+                    SecretSource::None
+                },
+                state: SecretState::Ok,
+                message: None,
+            },
+            Err(e) => SecretStatus {
+                key,
+                configured: false,
+                source: SecretSource::None,
+                state: match e {
+                    SecretError::Locked => SecretState::KeyringLocked,
+                    SecretError::Unavailable(_) => SecretState::Unavailable,
+                },
+                message: Some(e.to_string()),
+            },
+        }
+    }
+
+    pub async fn secrets_status(&self) -> Vec<SecretStatus> {
+        let mut all = Vec::with_capacity(SecretKey::ALL.len());
+        for key in SecretKey::ALL {
+            all.push(self.secret_status(key).await);
+        }
+        all
+    }
+
+    /// Stores a secret in the keyring. There is no fallback: if the keyring
+    /// cannot be used the call fails, so a secret is never written in clear.
+    pub async fn set_secret(
+        &self,
+        key: SecretKey,
+        value: SecretValue,
+    ) -> Result<SecretStatus, AppError> {
+        self.ensure_secret_writable(key)?;
+        if value.is_empty() {
+            return Err(
+                AppError::validation(key.id(), "La valeur ne peut pas être vide.").with_suggestion(
+                    "Saisissez la valeur, ou utilisez « Effacer » pour la retirer.",
+                ),
+            );
+        }
+        self.secrets
+            .set(key, value)
+            .await
+            .map_err(secret_app_error)?;
+        Ok(self.secret_status(key).await)
+    }
+
+    pub async fn clear_secret(&self, key: SecretKey) -> Result<SecretStatus, AppError> {
+        self.ensure_secret_writable(key)?;
+        self.secrets.clear(key).await.map_err(secret_app_error)?;
+        Ok(self.secret_status(key).await)
+    }
+
+    /// The effective secret (env > keyring) for backend consumers. Never
+    /// reaches the UI. A keyring failure reads as "not configured".
+    pub async fn secret(&self, key: SecretKey) -> Option<SecretValue> {
+        if let Some(v) = self.env_secret(key) {
+            return Some(v);
+        }
+        self.secrets.get(key).await.ok().flatten()
+    }
+
+    fn ensure_secret_writable(&self, key: SecretKey) -> Result<(), AppError> {
+        if self.env_secret(key).is_some() {
+            return Err(
+                AppError::validation(key.id(), "Secret imposé par l'environnement.")
+                    .with_suggestion(format!(
+                        "Retirez la variable {} pour pouvoir le modifier.",
+                        key.env_var()
+                    )),
+            );
+        }
+        Ok(())
     }
 
     pub fn view(&self) -> SettingsView {
@@ -183,15 +298,29 @@ impl SettingsService {
     }
 }
 
+fn secret_app_error(e: SecretError) -> AppError {
+    let code = match e {
+        SecretError::Locked => "secret_keyring_locked",
+        SecretError::Unavailable(_) => "secret_keyring_unavailable",
+    };
+    AppError::new(code, e.to_string())
+        .with_suggestion("La variable d'environnement reste possible sans trousseau.")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::{MemoryEnvironment, MemorySettingsRepository};
+    use crate::testing::{MemoryEnvironment, MemorySecretStore, MemorySettingsRepository};
 
     async fn service() -> (SettingsService, Arc<MemorySettingsRepository>) {
         let repo = Arc::new(MemorySettingsRepository::default());
         (
-            SettingsService::load(repo.clone(), Arc::new(MemoryEnvironment::default())).await,
+            SettingsService::load(
+                repo.clone(),
+                Arc::new(MemoryEnvironment::default()),
+                Arc::new(MemorySecretStore::default()),
+            )
+            .await,
             repo,
         )
     }
@@ -229,7 +358,12 @@ mod tests {
         repo.put_raw("library.scan_parallelism", r#"{"type":"int","value":4}"#);
         repo.put_raw("network.timeout_ms", r#"{"type":"int","value":5}"#);
         repo.put_raw("nope", "garbage");
-        let svc = SettingsService::load(repo, Arc::new(MemoryEnvironment::default())).await;
+        let svc = SettingsService::load(
+            repo,
+            Arc::new(MemoryEnvironment::default()),
+            Arc::new(MemorySecretStore::default()),
+        )
+        .await;
         assert_eq!(svc.snapshot().scan_parallelism, 4);
         assert_eq!(svc.snapshot().network_timeout_ms, 10_000);
     }
@@ -319,7 +453,12 @@ mod tests {
         repo: &Arc<MemorySettingsRepository>,
         vars: &[(&str, &str)],
     ) -> SettingsService {
-        SettingsService::load(repo.clone(), Arc::new(MemoryEnvironment::with(vars))).await
+        SettingsService::load(
+            repo.clone(),
+            Arc::new(MemoryEnvironment::with(vars)),
+            Arc::new(MemorySecretStore::default()),
+        )
+        .await
     }
 
     #[test]
@@ -425,5 +564,117 @@ mod tests {
         let m = svc.meta();
         assert_eq!(m.source("network.timeout_ms"), SettingSource::Stored);
         assert!(m.warnings.is_empty());
+    }
+
+    async fn secret_service(vars: &[(&str, &str)]) -> (SettingsService, Arc<MemorySecretStore>) {
+        let store = Arc::new(MemorySecretStore::default());
+        let svc = SettingsService::load(
+            Arc::new(MemorySettingsRepository::default()),
+            Arc::new(MemoryEnvironment::with(vars)),
+            store.clone(),
+        )
+        .await;
+        (svc, store)
+    }
+
+    const KEY: SecretKey = SecretKey::TmdbApiKey;
+
+    #[tokio::test]
+    async fn set_secret_reports_configured_without_leaking_value() {
+        let (svc, store) = secret_service(&[]).await;
+        assert!(!svc.secret_status(KEY).await.configured);
+        let status = svc
+            .set_secret(KEY, SecretValue::new("s3cr3t-value"))
+            .await
+            .unwrap();
+        assert!(status.configured);
+        assert_eq!(status.source, SecretSource::Keyring);
+        assert_eq!(status.state, SecretState::Ok);
+        assert_eq!(store.stored(KEY).as_deref(), Some("s3cr3t-value"));
+        let rendered = format!("{status:?}{}", serde_json::to_string(&status).unwrap());
+        assert!(!rendered.contains("s3cr3t"));
+        assert!(!format!("{:?}", SecretValue::new("s3cr3t-value")).contains("s3cr3t"));
+        assert_eq!(svc.secret(KEY).await.unwrap().expose(), "s3cr3t-value");
+    }
+
+    #[tokio::test]
+    async fn env_secret_locks_and_never_touches_keyring() {
+        let (svc, store) = secret_service(&[("OPEN_MOSAIK_TMDB_API_KEY", "from-env")]).await;
+        let status = svc.secret_status(KEY).await;
+        assert_eq!(
+            (status.configured, status.source, status.state),
+            (true, SecretSource::Env, SecretState::EnvLocked)
+        );
+        let err = svc
+            .set_secret(KEY, SecretValue::new("x"))
+            .await
+            .unwrap_err();
+        assert_eq!(err.field.as_deref(), Some("tmdb_api_key"));
+        assert!(svc.clear_secret(KEY).await.is_err());
+        assert_eq!(svc.secret(KEY).await.unwrap().expose(), "from-env");
+        assert_eq!(store.calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn empty_env_var_is_ignored() {
+        let (svc, _) = secret_service(&[("OPEN_MOSAIK_TMDB_API_KEY", "  ")]).await;
+        assert_eq!(svc.secret_status(KEY).await.source, SecretSource::None);
+    }
+
+    #[tokio::test]
+    async fn unavailable_keyring_fails_explicitly_and_stores_nothing() {
+        let (svc, store) = secret_service(&[]).await;
+        store.set_unavailable(true);
+        let err = svc
+            .set_secret(KEY, SecretValue::new("abc"))
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "secret_keyring_unavailable");
+        assert!(err.message.starts_with("Trousseau indisponible"));
+        assert!(!err.message.contains("abc"));
+        assert_eq!(svc.secret_status(KEY).await.state, SecretState::Unavailable);
+        store.set_unavailable(false);
+        assert!(store.stored(KEY).is_none());
+    }
+
+    #[tokio::test]
+    async fn locked_keyring_is_reported() {
+        let (svc, store) = secret_service(&[]).await;
+        store.set_locked(true);
+        let status = svc.secret_status(KEY).await;
+        assert_eq!(status.state, SecretState::KeyringLocked);
+        assert!(!status.configured);
+        let err = svc
+            .set_secret(KEY, SecretValue::new("abc"))
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "secret_keyring_locked");
+    }
+
+    #[tokio::test]
+    async fn clear_secret_removes_the_value() {
+        let (svc, _) = secret_service(&[]).await;
+        svc.set_secret(KEY, SecretValue::new("abc")).await.unwrap();
+        let status = svc.clear_secret(KEY).await.unwrap();
+        assert!(!status.configured);
+        assert_eq!(status.source, SecretSource::None);
+        assert!(svc.secret(KEY).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn empty_secret_is_rejected() {
+        let (svc, store) = secret_service(&[]).await;
+        let err = svc
+            .set_secret(KEY, SecretValue::new("   "))
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "validation");
+        assert_eq!(store.calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn secrets_status_lists_every_key() {
+        let (svc, _) = secret_service(&[]).await;
+        assert_eq!(svc.secrets_status().await.len(), SecretKey::ALL.len());
     }
 }

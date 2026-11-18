@@ -11,7 +11,9 @@ serde.workspace = true
 serde_json.workspace = true
 async-trait.workspace = true
 sqlx.workspace = true
-tokio = { workspace = true, features = ["rt"] }
+keyring.workspace = true
+dbus-secret-service.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }
