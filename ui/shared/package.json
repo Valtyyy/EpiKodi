@@ -6,7 +6,8 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./theme.css": "./src/theme.css"
   },
   "scripts": {
     "build": "tsc --noEmit",
@@ -14,6 +15,16 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "jsdom": "^31.0.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "vitest": "^5.1.0"
+  },
+  "peerDependencies": {
+    "react": "^19.1.0"
   }
 }
