@@ -36,20 +36,23 @@ impl SettingsRepository for SqliteSettingsRepository {
             .collect()
     }
 
-    async fn save(&self, key: &str, raw_json: &str) -> Result<(), AppError> {
+    async fn save_many(&self, entries: &[(String, String)]) -> Result<(), AppError> {
         // SQLite integers are signed 64-bit; saturate rather than wrap.
         let now = i64::try_from(self.clock.now_ms()).unwrap_or(i64::MAX);
-        sqlx::query(
-            "INSERT INTO setting (key, value, updated_at) VALUES (?1, ?2, ?3) \
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-        )
-        .bind(key)
-        .bind(raw_json)
-        .bind(now)
-        .execute(&self.pool)
-        .await
-        .map_err(db_error)?;
-        Ok(())
+        let mut tx = self.pool.begin().await.map_err(db_error)?;
+        for (key, raw_json) in entries {
+            sqlx::query(
+                "INSERT INTO setting (key, value, updated_at) VALUES (?1, ?2, ?3) \
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            )
+            .bind(key)
+            .bind(raw_json)
+            .bind(now)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_error)?;
+        }
+        tx.commit().await.map_err(db_error)
     }
 }
 
@@ -98,6 +101,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn save_many_is_atomic() {
+        let (repo, pool) = repo().await;
+        // A NULL value violates NOT NULL on the second row, forcing a rollback.
+        sqlx::query("CREATE TRIGGER boom BEFORE INSERT ON setting WHEN NEW.key = 'bad' BEGIN SELECT RAISE(ABORT, 'boom'); END")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let rows = vec![
+            ("good".to_owned(), "1".to_owned()),
+            ("bad".to_owned(), "2".to_owned()),
+        ];
+        assert!(repo.save_many(&rows).await.is_err());
+        assert!(repo.load_all().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn invalid_raw_value_yields_default_with_warning() {
         let (repo, pool) = repo().await;
         sqlx::query(
@@ -112,7 +131,7 @@ mod tests {
             Arc::new(om_core::testing::MemorySecretStore::default()),
         )
         .await;
-        assert_eq!(svc.snapshot().network_timeout_ms, 10_000);
+        assert_eq!(svc.current().network_timeout_ms, 10_000);
         assert_eq!(
             svc.meta().source("network.timeout_ms"),
             SettingSource::Default
@@ -134,6 +153,6 @@ mod tests {
         .await
         .unwrap();
         let reloaded = SettingsService::load(repo, env, secrets).await;
-        assert_eq!(reloaded.snapshot().scan_parallelism, 5);
+        assert_eq!(reloaded.current().scan_parallelism, 5);
     }
 }

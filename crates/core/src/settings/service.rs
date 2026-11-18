@@ -7,7 +7,10 @@ use async_trait::async_trait;
 use tokio::sync::{Mutex as AsyncMutex, watch};
 
 use super::catalog::Settings;
-use super::model::{SettingSource, SettingValue, SettingWarning, SettingsPatch};
+use super::model::{
+    ApplyMoment, SettingEntry, SettingSource, SettingValue, SettingWarning, SettingsPatch,
+    SettingsSnapshot,
+};
 use super::view::SettingsView;
 use crate::{
     AppError, SecretError, SecretKey, SecretSource, SecretState, SecretStatus, SecretStore,
@@ -18,7 +21,13 @@ use crate::{
 #[async_trait]
 pub trait SettingsRepository: Send + Sync {
     async fn load_all(&self) -> Result<Vec<(String, String)>, AppError>;
-    async fn save(&self, key: &str, raw_json: &str) -> Result<(), AppError>;
+    /// Writes every entry or none: a failure must leave storage unchanged.
+    async fn save_many(&self, entries: &[(String, String)]) -> Result<(), AppError>;
+
+    async fn save(&self, key: &str, raw_json: &str) -> Result<(), AppError> {
+        self.save_many(&[(key.to_owned(), raw_json.to_owned())])
+            .await
+    }
 }
 
 /// Process environment, behind a port so `core` does no ambient I/O.
@@ -74,7 +83,21 @@ impl SettingsService {
         env: Arc<dyn Environment>,
         secrets: Arc<dyn SecretStore>,
     ) -> Self {
-        let mut meta = SettingsMeta::default();
+        Self::load_with_warnings(repo, env, secrets, Vec::new()).await
+    }
+
+    /// Like [`load`](Self::load), for a caller that already knows about a
+    /// problem (e.g. it had to fall back to a throw-away repository).
+    pub async fn load_with_warnings(
+        repo: Arc<dyn SettingsRepository>,
+        env: Arc<dyn Environment>,
+        secrets: Arc<dyn SecretStore>,
+        initial_warnings: Vec<SettingWarning>,
+    ) -> Self {
+        let mut meta = SettingsMeta {
+            warnings: initial_warnings,
+            ..SettingsMeta::default()
+        };
         let stored: BTreeMap<String, String> = match repo.load_all().await {
             Ok(rows) => rows.into_iter().collect(),
             Err(_) => {
@@ -222,12 +245,13 @@ impl SettingsService {
     }
 
     /// The effective secret (env > keyring) for backend consumers. Never
-    /// reaches the UI. A keyring failure reads as "not configured".
-    pub async fn secret(&self, key: SecretKey) -> Option<SecretValue> {
+    /// reaches the UI. A keyring failure is an error, not "not configured",
+    /// so the caller can tell the user why.
+    pub async fn secret(&self, key: SecretKey) -> Result<Option<SecretValue>, AppError> {
         if let Some(v) = self.env_secret(key) {
-            return Some(v);
+            return Ok(Some(v));
         }
-        self.secrets.get(key).await.ok().flatten()
+        self.secrets.get(key).await.map_err(secret_app_error)
     }
 
     fn ensure_secret_writable(&self, key: SecretKey) -> Result<(), AppError> {
@@ -247,8 +271,33 @@ impl SettingsService {
         SettingsView::new(self.tx.subscribe())
     }
 
-    pub fn snapshot(&self) -> Arc<Settings> {
+    /// The typed settings currently in effect.
+    pub fn current(&self) -> Arc<Settings> {
         self.tx.borrow().clone()
+    }
+
+    /// Descriptors with values, sources and locks, plus secret statuses and
+    /// warnings: the whole settings screen in one payload.
+    pub async fn snapshot(&self) -> SettingsSnapshot {
+        let settings = self.current();
+        let meta = self.meta();
+        let entries = Settings::descriptors()
+            .into_iter()
+            .filter_map(|descriptor| {
+                let value = settings.get(&descriptor.key)?;
+                Some(SettingEntry {
+                    source: meta.source(&descriptor.key),
+                    locked_reason: meta.locked_reason(&descriptor.key).map(str::to_owned),
+                    descriptor,
+                    value,
+                })
+            })
+            .collect();
+        SettingsSnapshot {
+            entries,
+            secrets: self.secrets_status().await,
+            warnings: meta.warnings,
+        }
     }
 
     pub fn meta(&self) -> SettingsMeta {
@@ -259,11 +308,13 @@ impl SettingsService {
     }
 
     /// All-or-nothing validation, then persistence, then broadcast.
-    pub async fn update(&self, patch: SettingsPatch) -> Result<Arc<Settings>, AppError> {
+    pub async fn update(&self, patch: impl Into<SettingsPatch>) -> Result<Arc<Settings>, AppError> {
+        let patch = patch.into().changes;
         let _guard = self.write_lock.lock().await;
         {
             let meta = self.meta.lock().unwrap_or_else(PoisonError::into_inner);
-            for (key, _) in &patch {
+            for key in patch.iter().map(|c| &c.key) {
+                ensure_plain_update(key)?;
                 if meta.locks.contains_key(key) {
                     return Err(
                         AppError::validation(key, "Réglage imposé par l'environnement.")
@@ -276,18 +327,21 @@ impl SettingsService {
             }
         }
         let mut next = (**self.tx.borrow()).clone();
-        for (key, value) in &patch {
-            next.set(key, value)?;
+        for c in &patch {
+            next.set(&c.key, &c.value)?;
         }
-        for (key, _) in &patch {
+        let mut rows = Vec::with_capacity(patch.len());
+        for key in patch.iter().map(|c| &c.key) {
             let Some(value) = next.get(key) else { continue };
             let raw = serde_json::to_string(&value)
                 .map_err(|e| AppError::internal(format!("sérialisation du réglage : {e}")))?;
-            self.repo.save(key, &raw).await?;
+            rows.push((key.clone(), raw));
         }
+        // One atomic write: memory and broadcast only change once storage did.
+        self.repo.save_many(&rows).await?;
         {
             let mut meta = self.meta.lock().unwrap_or_else(PoisonError::into_inner);
-            for (key, _) in &patch {
+            for key in patch.iter().map(|c| &c.key) {
                 meta.sources.insert(key.clone(), SettingSource::Stored);
                 meta.warnings.retain(|w| &w.key != key);
             }
@@ -295,6 +349,25 @@ impl SettingsService {
         let next = Arc::new(next);
         self.tx.send_replace(next.clone());
         Ok(next)
+    }
+}
+
+/// Settings applied with `VerifiedRollback` need a dedicated service that
+/// proves the new value works (e.g. binds the new port) before saving it.
+fn ensure_apply_moment_allows_update(key: &str, apply: ApplyMoment) -> Result<(), AppError> {
+    if apply == ApplyMoment::VerifiedRollback {
+        return Err(
+            AppError::validation(key, "Ce réglage ne peut pas être modifié directement.")
+                .with_suggestion("Il est appliqué puis vérifié par un service dédié."),
+        );
+    }
+    Ok(())
+}
+
+fn ensure_plain_update(key: &str) -> Result<(), AppError> {
+    match Settings::descriptors().into_iter().find(|d| d.key == key) {
+        Some(d) => ensure_apply_moment_allows_update(key, d.apply),
+        None => Ok(()),
     }
 }
 
@@ -328,7 +401,7 @@ mod tests {
     #[tokio::test]
     async fn defaults_without_storage() {
         let (svc, _) = service().await;
-        let s = svc.snapshot();
+        let s = svc.current();
         assert!(s.window_decorations);
         assert_eq!(s.network_timeout_ms, 10_000);
         assert!(!s.first_run_completed);
@@ -364,8 +437,8 @@ mod tests {
             Arc::new(MemorySecretStore::default()),
         )
         .await;
-        assert_eq!(svc.snapshot().scan_parallelism, 4);
-        assert_eq!(svc.snapshot().network_timeout_ms, 10_000);
+        assert_eq!(svc.current().scan_parallelism, 4);
+        assert_eq!(svc.current().network_timeout_ms, 10_000);
     }
 
     #[tokio::test]
@@ -415,7 +488,7 @@ mod tests {
     #[tokio::test]
     async fn partially_invalid_patch_persists_nothing() {
         let (svc, repo) = service().await;
-        let before = svc.snapshot();
+        let before = svc.current();
         let result = svc
             .update(vec![
                 (
@@ -426,7 +499,7 @@ mod tests {
             ])
             .await;
         assert!(result.is_err());
-        assert_eq!(svc.snapshot(), before);
+        assert_eq!(svc.current(), before);
         assert!(repo.raw("interface.window_decorations").is_none());
     }
 
@@ -475,7 +548,7 @@ mod tests {
         repo.put_raw("network.timeout_ms", r#"{"type":"int","value":3000}"#);
         repo.put_raw("library.scan_parallelism", r#"{"type":"int","value":4}"#);
         let svc = with_env(&repo, &[("OPEN_MOSAIK_NETWORK_TIMEOUT_MS", "5000")]).await;
-        let (s, m) = (svc.snapshot(), svc.meta());
+        let (s, m) = (svc.current(), svc.meta());
         assert_eq!(s.network_timeout_ms, 5000);
         assert_eq!(m.source("network.timeout_ms"), SettingSource::Env);
         assert!(
@@ -496,7 +569,7 @@ mod tests {
     async fn env_parses_plain_bool() {
         let repo = Arc::new(MemorySettingsRepository::default());
         let svc = with_env(&repo, &[("OPEN_MOSAIK_INTERFACE_WINDOW_DECORATIONS", "0")]).await;
-        assert!(!svc.snapshot().window_decorations);
+        assert!(!svc.current().window_decorations);
     }
 
     #[tokio::test]
@@ -517,7 +590,7 @@ mod tests {
                 .contains("OPEN_MOSAIK_NETWORK_TIMEOUT_MS")
         );
         assert!(repo.raw("library.scan_parallelism").is_none());
-        assert_eq!(svc.snapshot().network_timeout_ms, 5000);
+        assert_eq!(svc.current().network_timeout_ms, 5000);
     }
 
     #[tokio::test]
@@ -527,7 +600,7 @@ mod tests {
         repo.put_raw("library.scan_parallelism", "garbage");
         let svc = with_env(&repo, &[]).await;
         let m = svc.meta();
-        assert_eq!(svc.snapshot().network_timeout_ms, 10_000);
+        assert_eq!(svc.current().network_timeout_ms, 10_000);
         assert_eq!(m.source("network.timeout_ms"), SettingSource::Default);
         assert_eq!(m.warnings.len(), 2);
     }
@@ -538,7 +611,7 @@ mod tests {
         repo.put_raw("network.timeout_ms", r#"{"type":"int","value":3000}"#);
         let svc = with_env(&repo, &[("OPEN_MOSAIK_NETWORK_TIMEOUT_MS", "abc")]).await;
         let m = svc.meta();
-        assert_eq!(svc.snapshot().network_timeout_ms, 3000);
+        assert_eq!(svc.current().network_timeout_ms, 3000);
         assert_eq!(m.source("network.timeout_ms"), SettingSource::Stored);
         assert!(m.locked_reason("network.timeout_ms").is_none());
         assert_eq!(m.warnings.len(), 1);
@@ -549,7 +622,7 @@ mod tests {
     async fn invalid_env_without_stored_falls_back_to_default() {
         let repo = Arc::new(MemorySettingsRepository::default());
         let svc = with_env(&repo, &[("OPEN_MOSAIK_NETWORK_TIMEOUT_MS", "5")]).await;
-        assert_eq!(svc.snapshot().network_timeout_ms, 10_000);
+        assert_eq!(svc.current().network_timeout_ms, 10_000);
         assert_eq!(svc.meta().warnings.len(), 1);
     }
 
@@ -594,7 +667,10 @@ mod tests {
         let rendered = format!("{status:?}{}", serde_json::to_string(&status).unwrap());
         assert!(!rendered.contains("s3cr3t"));
         assert!(!format!("{:?}", SecretValue::new("s3cr3t-value")).contains("s3cr3t"));
-        assert_eq!(svc.secret(KEY).await.unwrap().expose(), "s3cr3t-value");
+        assert_eq!(
+            svc.secret(KEY).await.unwrap().unwrap().expose(),
+            "s3cr3t-value"
+        );
     }
 
     #[tokio::test]
@@ -611,7 +687,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.field.as_deref(), Some("tmdb_api_key"));
         assert!(svc.clear_secret(KEY).await.is_err());
-        assert_eq!(svc.secret(KEY).await.unwrap().expose(), "from-env");
+        assert_eq!(svc.secret(KEY).await.unwrap().unwrap().expose(), "from-env");
         assert_eq!(store.calls(), 0);
     }
 
@@ -658,7 +734,7 @@ mod tests {
         let status = svc.clear_secret(KEY).await.unwrap();
         assert!(!status.configured);
         assert_eq!(status.source, SecretSource::None);
-        assert!(svc.secret(KEY).await.is_none());
+        assert!(svc.secret(KEY).await.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -673,8 +749,80 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn snapshot_lists_entries_with_sources_and_locks() {
+        let repo = Arc::new(MemorySettingsRepository::default());
+        let svc = with_env(&repo, &[("OPEN_MOSAIK_NETWORK_TIMEOUT_MS", "5000")]).await;
+        let snap = svc.snapshot().await;
+        assert_eq!(snap.entries.len(), Settings::descriptors().len());
+        let e = snap
+            .entries
+            .iter()
+            .find(|e| e.descriptor.key == "network.timeout_ms")
+            .unwrap();
+        assert_eq!(e.value, SettingValue::Int(5000));
+        assert_eq!(e.source, SettingSource::Env);
+        assert!(e.locked_reason.is_some());
+        assert!(snap.entries.iter().any(|e| !e.descriptor.visible));
+        assert_eq!(snap.secrets.len(), SecretKey::ALL.len());
+    }
+
+    #[tokio::test]
     async fn secrets_status_lists_every_key() {
         let (svc, _) = secret_service(&[]).await;
         assert_eq!(svc.secrets_status().await.len(), SecretKey::ALL.len());
+    }
+
+    #[test]
+    fn verified_rollback_settings_are_not_directly_updatable() {
+        let err =
+            ensure_apply_moment_allows_update("x.y", ApplyMoment::VerifiedRollback).unwrap_err();
+        assert_eq!(err.field.as_deref(), Some("x.y"));
+        assert!(ensure_apply_moment_allows_update("x.y", ApplyMoment::Immediate).is_ok());
+    }
+
+    #[tokio::test]
+    async fn secret_reports_keyring_failure_instead_of_none() {
+        let (svc, store) = secret_service(&[]).await;
+        store.set_locked(true);
+        let err = svc.secret(KEY).await.unwrap_err();
+        assert_eq!(err.code, "secret_keyring_locked");
+    }
+
+    #[tokio::test]
+    async fn failed_write_leaves_memory_and_subscribers_unchanged() {
+        let (svc, repo) = service().await;
+        let mut view = svc.view();
+        let before = svc.current();
+        repo.set_fail_writes(true);
+        let result = svc
+            .update(vec![
+                (
+                    "interface.window_decorations".into(),
+                    SettingValue::Bool(false),
+                ),
+                ("library.scan_parallelism".into(), SettingValue::Int(4)),
+            ])
+            .await;
+        assert!(result.is_err());
+        assert_eq!(svc.current(), before);
+        assert_eq!(view.current(), before);
+        assert!(repo.raw("library.scan_parallelism").is_none());
+        let pending = tokio::time::timeout(std::time::Duration::from_millis(20), view.changed());
+        assert!(pending.await.is_err());
+    }
+
+    #[tokio::test]
+    async fn initial_warnings_are_kept_in_the_snapshot() {
+        let svc = SettingsService::load_with_warnings(
+            Arc::new(MemorySettingsRepository::default()),
+            Arc::new(MemoryEnvironment::default()),
+            Arc::new(MemorySecretStore::default()),
+            vec![SettingWarning {
+                key: "storage".into(),
+                message: "x".into(),
+            }],
+        )
+        .await;
+        assert_eq!(svc.snapshot().await.warnings.len(), 1);
     }
 }

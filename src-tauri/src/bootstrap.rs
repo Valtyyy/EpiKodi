@@ -3,26 +3,77 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use infra::{JsonWindowStore, SystemClock};
-use om_core::{EventBus, PingService, WindowService};
+use infra::{KeyringSecretStore, ProcessEnvironment, SqliteSettingsRepository, SystemClock};
+use om_core::testing::MemorySettingsRepository;
+use om_core::{
+    AppError, Environment, EventBus, PingService, SecretStore, SettingWarning, SettingsRepository,
+    SettingsService,
+};
 use tauri::Manager;
 
 /// Every service of the application. Add new services here.
 pub struct Services {
     pub events: EventBus,
     pub ping: PingService,
-    pub window: WindowService,
+    pub settings: SettingsService,
 }
 
 /// Builds the service graph with the real port implementations.
-pub fn build(config_dir: &Path) -> Services {
-    let events = EventBus::new();
+///
+/// Always succeeds (§9: the app must start): if the settings database cannot
+/// be opened, settings live in a throw-away in-memory database and the user is
+/// warned that changes will not be kept.
+pub async fn build(data_dir: &Path) -> Services {
     let clock = Arc::new(SystemClock);
-    let window_store = Arc::new(JsonWindowStore::new(config_dir.join("window.json")));
+    let (repo, warnings) = match open_database(data_dir, clock.clone()).await {
+        Ok(repo) => (repo, Vec::new()),
+        Err(e) => {
+            let warning = SettingWarning {
+                key: "storage".into(),
+                message: format!(
+                    "Base de réglages inaccessible : {}. Les modifications ne seront pas conservées.",
+                    e.message
+                ),
+            };
+            let repo: Arc<dyn SettingsRepository> = match infra::db::open_in_memory().await {
+                Ok(pool) => Arc::new(SqliteSettingsRepository::new(pool, clock)),
+                // Cannot happen short of a broken sqlite build; the plain
+                // in-memory fake keeps the app alive anyway.
+                Err(_) => Arc::new(MemorySettingsRepository::default()),
+            };
+            (repo, vec![warning])
+        }
+    };
+    assemble(
+        repo,
+        Arc::new(ProcessEnvironment),
+        Arc::new(KeyringSecretStore::new()),
+        warnings,
+    )
+    .await
+}
 
+async fn open_database(
+    data_dir: &Path,
+    clock: Arc<SystemClock>,
+) -> Result<Arc<dyn SettingsRepository>, AppError> {
+    std::fs::create_dir_all(data_dir)
+        .map_err(|e| AppError::new("storage", format!("dossier de données inaccessible ({e})")))?;
+    let pool = infra::db::open(&data_dir.join("open-mosaik.db")).await?;
+    Ok(Arc::new(SqliteSettingsRepository::new(pool, clock)))
+}
+
+/// Wires services from already-built ports; tests call it with fakes.
+async fn assemble(
+    repo: Arc<dyn SettingsRepository>,
+    env: Arc<dyn Environment>,
+    secrets: Arc<dyn SecretStore>,
+    warnings: Vec<SettingWarning>,
+) -> Services {
+    let events = EventBus::new();
     Services {
-        ping: PingService::new(clock, events.clone()),
-        window: WindowService::new(window_store, events.clone()),
+        ping: PingService::new(Arc::new(SystemClock), events.clone()),
+        settings: SettingsService::load_with_warnings(repo, env, secrets, warnings).await,
         events,
     }
 }
@@ -33,26 +84,61 @@ pub fn register<R: tauri::Runtime>(app: &impl Manager<R>, services: Services) {
     let Services {
         events,
         ping,
-        window,
+        settings,
     } = services;
 
     app.manage(events);
     app.manage(ping);
-    app.manage(window);
+    app.manage(settings);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use om_core::testing::{MemoryEnvironment, MemorySecretStore, MemorySettingsRepository};
 
-    #[test]
-    fn every_service_is_managed_after_register() {
+    #[tokio::test]
+    async fn every_service_is_managed_after_register() {
         let app = tauri::test::mock_app();
-        register(&app, build(&std::env::temp_dir().join("om-bootstrap-test")));
+        let services = assemble(
+            Arc::new(MemorySettingsRepository::default()),
+            Arc::new(MemoryEnvironment::default()),
+            Arc::new(MemorySecretStore::default()),
+            Vec::new(),
+        )
+        .await;
+        register(&app, services);
 
         // Extend this list for every service added to `Services`.
         assert!(app.try_state::<EventBus>().is_some(), "EventBus");
         assert!(app.try_state::<PingService>().is_some(), "PingService");
-        assert!(app.try_state::<WindowService>().is_some(), "WindowService");
+        assert!(
+            app.try_state::<SettingsService>().is_some(),
+            "SettingsService"
+        );
+    }
+}
+
+#[cfg(test)]
+mod fallback_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn unopenable_database_falls_back_with_a_storage_warning() {
+        // A regular file where the data directory should be: creation fails.
+        let blocker = std::env::temp_dir().join(format!("om-blocker-{}", std::process::id()));
+        std::fs::write(&blocker, b"x").unwrap();
+        let services = build(&blocker.join("sub")).await;
+        let snapshot = services.settings.snapshot().await;
+        std::fs::remove_file(&blocker).unwrap();
+        let w = snapshot
+            .warnings
+            .iter()
+            .find(|w| w.key == "storage")
+            .unwrap();
+        assert!(
+            w.message
+                .contains("Les modifications ne seront pas conservées")
+        );
     }
 }
