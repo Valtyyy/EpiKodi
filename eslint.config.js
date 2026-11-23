@@ -3,6 +3,7 @@ import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
+import betterTailwind from "eslint-plugin-better-tailwindcss";
 
 export default tseslint.config(
   {
@@ -42,6 +43,17 @@ export default tseslint.config(
           message: "C1: <video>/<audio> are forbidden, playback goes through libmpv.",
         },
       ],
+    },
+  },
+  {
+    // Only correctness rules: class order is owned by prettier-plugin-tailwindcss.
+    // no-unknown-classes is what rejects default palette classes (bg-blue-500),
+    // since theme.css removes them with `--color-*: initial`. entryPoint is resolved
+    // from cwd: a path from the repo root silently falls back to the default theme.
+    files: ["ui/tv/**/*.tsx", "ui/shared/**/*.tsx"],
+    ...betterTailwind.configs["correctness-error"],
+    settings: {
+      "better-tailwindcss": { entryPoint: "src/index.css", cwd: "ui/tv" },
     },
   },
   {

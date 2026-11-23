@@ -3,6 +3,8 @@
  * names (bg-surface, text-content, ...), never a raw palette, so the theme can
  * change without touching the code. Contrast ratios are measured on the pairs
  * below and must stay >= 4.5:1 (7:1 for content on surface).
+ * Colors only: this file is shared with the phone remote, so the 10-foot size
+ * scale lives in ui/tv/src/index.css.
  */
 :root {
   --om-surface: #0e1116;
@@ -25,10 +27,4 @@
   --color-accent-content: var(--om-accent-content);
   --color-focus: var(--om-focus);
   --color-danger: var(--om-danger);
-
-  /* 10-foot scale: nothing below 20px. */
-  --text-tv-sm: 1.25rem;
-  --text-tv-md: 1.5rem;
-  --text-tv-lg: 2rem;
-  --text-tv-xl: 3rem;
 }

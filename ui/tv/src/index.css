@@ -3,7 +3,23 @@
 /* Tailwind does not scan workspace dependencies on its own. */
 @source "../../shared/src";
 
+/*
+ * 10-foot scale (ARCHITECTURE.md "Styles avec Tailwind"): Tailwind's defaults
+ * target a screen at arm's length, the TV is read from about 3 meters.
+ */
+@theme {
+  /* Spacing unit x1.5 (6px instead of 4px): p-8 = 48px, larger focus targets. */
+  --spacing: 0.375rem;
+
+  /* Drop text-xs..text-9xl so no size under 20px can be used by mistake. */
+  --text-*: initial;
+  --text-tv-sm: 1.25rem;
+  --text-tv-md: 1.5rem;
+  --text-tv-lg: 2rem;
+  --text-tv-xl: 3rem;
+}
+
 html,
 body {
-  @apply bg-surface text-content text-tv-md;
+  @apply bg-surface text-tv-md text-content;
 }
