@@ -34,3 +34,6 @@ spikes/**/gen/
 .env
 .env.*
 !.env.example
+
+# TypeScript incremental build output (tsc -b / composite projects)
+*.tsbuildinfo
