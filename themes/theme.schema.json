@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-mosaik.dev/schemas/theme.schema.json",
+  "title": "Thème Open Mosaik",
+  "description": "Couleurs sémantiques de l'interface. Format documenté dans themes/README.md. Le contraste (4,5:1 minimum) est vérifié au chargement, il ne peut pas s'exprimer dans ce schéma.",
+  "type": "object",
+  "required": ["name", "colors"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": {
+      "description": "Nom affiché dans les réglages.",
+      "type": "string",
+      "minLength": 1
+    },
+    "colors": {
+      "type": "object",
+      "required": [
+        "surface",
+        "surface-raised",
+        "content",
+        "content-muted",
+        "accent",
+        "accent-content",
+        "focus",
+        "danger"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "surface": { "$ref": "#/$defs/color", "description": "Fond de l'écran." },
+        "surface-raised": {
+          "$ref": "#/$defs/color",
+          "description": "Fond des éléments posés sur l'écran (champs, touches, panneaux)."
+        },
+        "content": { "$ref": "#/$defs/color", "description": "Texte principal." },
+        "content-muted": {
+          "$ref": "#/$defs/color",
+          "description": "Texte secondaire, bordures, fond d'un badge."
+        },
+        "accent": {
+          "$ref": "#/$defs/color",
+          "description": "Élément focalisé, texte d'accent."
+        },
+        "accent-content": {
+          "$ref": "#/$defs/color",
+          "description": "Texte posé sur la couleur d'accent."
+        },
+        "focus": { "$ref": "#/$defs/color", "description": "Contour de l'élément focalisé." },
+        "danger": { "$ref": "#/$defs/color", "description": "Erreurs." }
+      }
+    }
+  },
+  "$defs": {
+    "color": {
+      "description": "Couleur opaque #rrggbb : la transparence rendrait le contraste incalculable.",
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+    }
+  }
+}

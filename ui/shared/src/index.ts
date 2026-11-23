@@ -21,3 +21,13 @@ export type { GridItemProps, GridPosition, RovingGrid, UseRovingGridOptions } fr
 
 export { ApiProvider, useApi, createFakeApiClient } from "./api";
 export type { ApiClient } from "./api";
+
+export {
+  applyTheme,
+  parseTheme,
+  contrastRatio,
+  CONTRAST_PAIRS,
+  MIN_CONTRAST,
+  THEME_COLORS,
+} from "./theme";
+export type { Theme, ThemeColor, ThemeResult } from "./theme";

@@ -89,7 +89,7 @@ La séparation en crates rend la règle de dépendance vérifiable par le compil
 │   ├── remote/            # React, télécommande (embarquée dans le binaire)
 │   └── shared/            # types générés, client d'API, composants, feuille Tailwind commune
 ├── extensions/            # catalogue domaine public, widget météo, cas hostiles
-├── themes/default/        # thème par défaut + JSON Schema
+├── themes/                # JSON Schema des thèmes, thème par défaut (default/), format : themes/README.md
 ├── scripts/               # installation de la médiathèque de démo
 └── docs/                  # utilisateur, technique, ADR, guide d'extensions
 ```
@@ -427,7 +427,7 @@ flowchart LR
     Handler --> Focus[Gestionnaire de focus]
 ```
 
-- **Thème indépendant du code.** `themes/default/theme.json`, validé par un JSON Schema publié, appliqué comme variables CSS que Tailwind consomme. Le chargement vérifie le contraste (4,5:1) et refuse un thème non conforme. Le second thème à chaud (bonus) devient trivial.
+- **Thème indépendant du code.** `themes/default/theme.json`, validé par un JSON Schema publié (`themes/theme.schema.json`), appliqué comme variables CSS que Tailwind consomme. Le chargement vérifie le contraste (4,5:1) et refuse un thème non conforme. Le second thème à chaud (bonus) devient trivial.
 - **Accessibilité testée tôt.** HTML sémantique, régions `aria-live`, test Orca dès les premiers écrans, car WebKitGTK et AT-SPI sont un sujet de risque. Le sujet autorise la synthèse vocale intégrée : `speech-dispatcher` derrière un port `Announcer` en repli si Orca ne suit pas.
 - **Garde-fou C1.** Une règle ESLint interdit `<video>`, `<audio>` et `new Audio()`.
 
@@ -446,10 +446,10 @@ theme.json  →  variables CSS à l'exécution (--om-*)  →  @theme inline  →
 
 @theme inline {
   --color-*: initial; /* retire la palette par défaut */
-  --color-surface: var(--om-color-surface);
-  --color-content: var(--om-color-content);
-  --color-accent: var(--om-color-accent);
-  --color-focus: var(--om-color-focus);
+  --color-surface: var(--om-surface);
+  --color-content: var(--om-content);
+  --color-accent: var(--om-accent);
+  --color-focus: var(--om-focus);
 }
 ```
 
