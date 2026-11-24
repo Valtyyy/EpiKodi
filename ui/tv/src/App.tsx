@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ApiProvider,
   useApi,
+  useSpatialNavigation,
   type AppError,
   type ApiClient,
   type SettingsSnapshot,
@@ -54,9 +55,13 @@ function Root() {
 }
 
 function App({ client = tauriClient }: { client?: ApiClient }) {
+  const navRoot = useRef<HTMLDivElement>(null);
+  useSpatialNavigation(navRoot);
   return (
     <ApiProvider client={client}>
-      <Root />
+      <div ref={navRoot}>
+        <Root />
+      </div>
     </ApiProvider>
   );
 }
