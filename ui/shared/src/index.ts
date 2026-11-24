@@ -16,8 +16,24 @@ export type { SettingWarning } from "./generated/SettingWarning";
 export type { SettingsPatch } from "./generated/SettingsPatch";
 export type { SettingsSnapshot } from "./generated/SettingsSnapshot";
 
-export { useRovingGrid } from "./focus";
-export type { GridItemProps, GridPosition, RovingGrid, UseRovingGridOptions } from "./focus";
+export {
+  useRovingGrid,
+  findNext,
+  createSpatialNavigation,
+  useSpatialNavigation,
+  focusRing,
+  NAV_ITEM_ATTR,
+  NAV_ZONE_ATTR,
+} from "./focus";
+export type {
+  GridItemProps,
+  GridPosition,
+  RovingGrid,
+  UseRovingGridOptions,
+  Direction,
+  Rect,
+  SpatialNavigation,
+} from "./focus";
 
 export { ApiProvider, useApi, createFakeApiClient } from "./api";
 export type { ApiClient } from "./api";
