@@ -1,11 +1,11 @@
 import { useId, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { GridItemProps, SettingEntry, SettingValue } from "@om/shared";
+import { focusRing, type GridItemProps, type SettingEntry, type SettingValue } from "@om/shared";
 import { KeyboardDialog } from "./KeyboardDialog";
 import { APPLY_LABEL } from "./labels";
 
 export const controlClass =
   "min-h-16 rounded-lg bg-surface-raised px-6 py-3 text-tv-md text-content " +
-  "focus:outline-4 focus:outline-offset-2 focus:outline-focus focus:bg-accent focus:text-accent-content " +
+  `${focusRing} focus:bg-accent focus:text-accent-content ` +
   "aria-disabled:opacity-70";
 
 export interface FieldProps {

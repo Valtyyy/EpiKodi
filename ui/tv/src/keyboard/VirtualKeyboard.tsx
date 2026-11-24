@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { useRovingGrid } from "@om/shared";
+import { focusRing, useRovingGrid } from "@om/shared";
 import { LAYOUTS, LAYOUT_LABEL, charName, type KeyDef, type LayoutId } from "./layouts";
 
 export interface VirtualKeyboardProps {
@@ -15,7 +15,7 @@ export interface VirtualKeyboardProps {
 
 const keyClass =
   "min-h-16 min-w-16 flex-1 rounded-lg bg-surface-raised px-4 text-tv-md text-content " +
-  "focus:outline-4 focus:outline-offset-2 focus:outline-focus focus:bg-accent focus:text-accent-content " +
+  `${focusRing} focus:bg-accent focus:text-accent-content ` +
   "aria-pressed:bg-content-muted aria-pressed:text-surface";
 
 export function VirtualKeyboard({
