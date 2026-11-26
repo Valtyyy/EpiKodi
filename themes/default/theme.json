@@ -1,0 +1,14 @@
+{
+  "$schema": "../theme.schema.json",
+  "name": "Par défaut",
+  "colors": {
+    "surface": "#0e1116",
+    "surface-raised": "#1b212b",
+    "content": "#f3f5f8",
+    "content-muted": "#aab2c0",
+    "accent": "#6cb4ff",
+    "accent-content": "#08111d",
+    "focus": "#ffd24a",
+    "danger": "#ff8a80"
+  }
+}

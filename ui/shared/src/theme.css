@@ -1,22 +1,11 @@
 /*
  * Semantic design tokens (ARCHITECTURE.md section 6). Components use only these
  * names (bg-surface, text-content, ...), never a raw palette, so the theme can
- * change without touching the code. Contrast ratios are measured on the pairs
- * below and must stay >= 4.5:1 (7:1 for content on surface).
- * Colors only: this file is shared with the phone remote, so the 10-foot size
- * scale lives in ui/tv/src/index.css.
+ * change without touching the code. The --om-* values are not defined here: they
+ * come from themes/<name>/theme.json, checked then applied at runtime by
+ * applyTheme() (src/theme). Colors only: this file is shared with the phone
+ * remote, so the 10-foot size scale lives in ui/tv/src/index.css.
  */
-:root {
-  --om-surface: #0e1116;
-  --om-surface-raised: #1b212b;
-  --om-content: #f3f5f8;
-  --om-content-muted: #aab2c0;
-  --om-accent: #6cb4ff;
-  --om-accent-content: #08111d;
-  --om-focus: #ffd24a;
-  --om-danger: #ff8a80;
-}
-
 @theme inline {
   --color-*: initial;
   --color-surface: var(--om-surface);
