@@ -8,7 +8,7 @@ use async_trait::async_trait;
 
 use crate::{
     AppError, Clock, Environment, SecretError, SecretKey, SecretStore, SecretValue,
-    SettingsRepository,
+    SettingsRepository, UiBridge, UiEvent,
 };
 
 /// Clock that only moves when told to.
@@ -170,5 +170,21 @@ impl SecretStore for MemorySecretStore {
             .get(&key)
             .cloned()
             .map(SecretValue::new))
+    }
+}
+
+/// `UiBridge` that records what would have been sent to the interface.
+#[derive(Default)]
+pub struct RecordingUiBridge(Mutex<Vec<UiEvent>>);
+
+impl RecordingUiBridge {
+    pub fn events(&self) -> Vec<UiEvent> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl UiBridge for RecordingUiBridge {
+    fn send(&self, event: UiEvent) {
+        self.0.lock().unwrap().push(event);
     }
 }
