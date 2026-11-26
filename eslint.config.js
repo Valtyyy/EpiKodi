@@ -52,6 +52,23 @@ export default tseslint.config(
     // from cwd: a path from the repo root silently falls back to the default theme.
     files: ["ui/tv/**/*.tsx", "ui/shared/**/*.tsx"],
     ...betterTailwind.configs["correctness-error"],
+    rules: {
+      ...betterTailwind.configs["correctness-error"].rules,
+      // Focus moved by script (spatial navigation, phone remote) may not match
+      // :focus-visible, and the TV focus must always show (ARCHITECTURE.md section 6).
+      "better-tailwindcss/no-restricted-classes": [
+        "error",
+        {
+          restrict: [
+            {
+              pattern: "^(.*:)?focus-visible:(.*)$",
+              fix: "$1focus:$2",
+              message: "Use focus: on the TV, focus-visible: misses script-moved focus.",
+            },
+          ],
+        },
+      ],
+    },
     settings: {
       "better-tailwindcss": { entryPoint: "src/index.css", cwd: "ui/tv" },
     },
