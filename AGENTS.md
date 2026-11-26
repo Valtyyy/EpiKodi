@@ -74,7 +74,7 @@ Single Rust test: `cargo test -p om-core <name>`.
 - `.claude/rules/extensions-security.md`: ext-host, permissions, remote API
 - `.claude/rules/docs-adr.md`: documentation, ADRs, spikes
 
-Skill: `/new-adr` creates a numbered ADR from the template.
+Skills: `/new-adr` creates a numbered ADR from the template; `/code-diagram` regenerates the Mermaid diagrams of the current code in `docs/diagrams/` (in English).
 
 ## Status
 
