@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ApiProvider,
   useApi,
-  useSpatialNavigation,
   type AppError,
   type ApiClient,
   type SettingsSnapshot,
 } from "@om/shared";
 import { createTauriApiClient } from "./api/tauri";
 import { formatError } from "./format";
+import { TvInput } from "./input/TvInput";
 import { SettingsScreen } from "./settings/SettingsScreen";
 import { FIRST_RUN_KEY } from "./wizard/constants";
 import { FirstRunWizard } from "./wizard/FirstRunWizard";
@@ -55,13 +55,11 @@ function Root() {
 }
 
 function App({ client = tauriClient }: { client?: ApiClient }) {
-  const navRoot = useRef<HTMLDivElement>(null);
-  useSpatialNavigation(navRoot);
   return (
     <ApiProvider client={client}>
-      <div ref={navRoot}>
+      <TvInput>
         <Root />
-      </div>
+      </TvInput>
     </ApiProvider>
   );
 }

@@ -15,8 +15,6 @@ function mount(html: string): HTMLElement {
 }
 
 const byId = (id: string) => document.getElementById(id)!;
-const press = (key: string, target: Element = document.activeElement ?? document.body) =>
-  target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 let nav: SpatialNavigation;
@@ -41,14 +39,14 @@ describe("spatial navigation on a grid", () => {
     nav = createSpatialNavigation(root);
   });
 
-  it("moves document.activeElement with the arrow keys", () => {
+  it("moves document.activeElement", () => {
     byId("a").focus();
-    press("ArrowRight");
+    nav.move("right");
     expect(document.activeElement).toBe(byId("b"));
-    press("ArrowDown");
+    nav.move("down");
     expect(document.activeElement).toBe(byId("e"));
-    press("ArrowLeft");
-    press("ArrowUp");
+    nav.move("left");
+    nav.move("up");
     expect(document.activeElement).toBe(byId("a"));
   });
 
@@ -56,22 +54,14 @@ describe("spatial navigation on a grid", () => {
     const tabbable = () => [...root.querySelectorAll("button")].filter((b) => b.tabIndex === 0);
     expect(tabbable().map((b) => b.id)).toEqual(["a"]);
     byId("a").focus();
-    press("ArrowRight");
+    nav.move("right");
     expect(tabbable().map((b) => b.id)).toEqual(["b"]);
   });
 
-  it("stays put at the edge and leaves the event alone", () => {
+  it("stays put at the edge", () => {
     byId("c").focus();
-    const handled = !press("ArrowRight");
-    expect(handled).toBe(false);
+    expect(nav.move("right")).toBe(false);
     expect(document.activeElement).toBe(byId("c"));
-  });
-
-  it("ignores arrows a widget already handled", () => {
-    byId("a").focus();
-    byId("a").addEventListener("keydown", (e) => e.preventDefault());
-    press("ArrowRight");
-    expect(document.activeElement).toBe(byId("a"));
   });
 
   it("skips disabled and hidden items", () => {
@@ -83,12 +73,21 @@ describe("spatial navigation on a grid", () => {
     expect(document.activeElement).toBe(byId("e"));
   });
 
-  it("brings focus back from <body> on the next arrow", () => {
+  it("brings focus back from <body> on the next move", () => {
     byId("e").focus();
     byId("e").blur();
     expect(document.activeElement).toBe(document.body);
-    press("ArrowDown", document.body);
+    expect(nav.move("down")).toBe(true);
     expect(document.activeElement).toBe(byId("e"));
+  });
+
+  it("does not take focus from a layer outside the root", () => {
+    const dialog = document.createElement("button");
+    document.body.append(dialog);
+    dialog.focus();
+    expect(nav.move("down")).toBe(false);
+    expect(document.activeElement).toBe(dialog);
+    dialog.remove();
   });
 
   it("refocuses an item when the focused one is removed", async () => {
@@ -123,12 +122,12 @@ describe("zones", () => {
 
   it("returns to the last focused item of a zone", () => {
     byId("c4").focus();
-    press("ArrowLeft");
-    press("ArrowLeft");
+    nav.move("left");
+    nav.move("left");
     expect(document.activeElement).toBe(byId("m2"));
-    press("ArrowUp");
+    nav.move("up");
     // Geometry would pick c1 from m1; the zone remembers c3.
-    press("ArrowRight");
+    nav.move("right");
     expect(document.activeElement).toBe(byId("c3"));
   });
 
@@ -151,18 +150,5 @@ describe("guards", () => {
     byId("ok").focus();
     expect(nav.move("down")).toBe(false);
     expect(document.activeElement).toBe(byId("ok"));
-  });
-
-  it("leaves left/right to a text field's caret", () => {
-    root = mount(`
-      <input id="field" data-nav data-box="0 0 100 100">
-      <button id="next" data-nav data-box="120 0 100 100">next</button>
-      <button id="below" data-nav data-box="0 120 100 100">below</button>`);
-    nav = createSpatialNavigation(root);
-    byId("field").focus();
-    press("ArrowRight");
-    expect(document.activeElement).toBe(byId("field"));
-    press("ArrowDown");
-    expect(document.activeElement).toBe(byId("below"));
   });
 });

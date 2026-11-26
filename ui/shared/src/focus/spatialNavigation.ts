@@ -11,31 +11,6 @@ export interface SpatialNavigation {
   destroy: () => void;
 }
 
-const KEY_DIRECTION: Partial<Record<string, Direction>> = {
-  ArrowUp: "up",
-  ArrowDown: "down",
-  ArrowLeft: "left",
-  ArrowRight: "right",
-};
-
-/** Input types without a caret: left/right are free for navigation. */
-const NO_CARET = new Set([
-  "button",
-  "checkbox",
-  "radio",
-  "submit",
-  "reset",
-  "image",
-  "file",
-  "color",
-]);
-
-function ownsHorizontalArrows(t: EventTarget): boolean {
-  if (t instanceof HTMLTextAreaElement) return true;
-  if (t instanceof HTMLInputElement) return !NO_CARET.has(t.type);
-  return t instanceof HTMLElement && t.isContentEditable;
-}
-
 function isUsable(el: HTMLElement): boolean {
   return !(el as HTMLButtonElement).disabled && el.closest("[hidden],[inert]") === null;
 }
@@ -46,8 +21,8 @@ function isUsable(el: HTMLElement): boolean {
  * state. Roving tabindex is per zone: the zone's remembered item is the only tabbable
  * one, so Tab jumps between zones and coming back to a zone lands where the user left.
  *
- * Widgets with their own arrow logic (`useRovingGrid`) call `preventDefault`, and this
- * manager ignores prevented events: the widget keeps the arrows it uses.
+ * It does not listen to keys: the input handler (`createInputHandler`) calls `move`, so
+ * the living-room keyboard and the phone remote share one path.
  */
 export function createSpatialNavigation(root: HTMLElement): SpatialNavigation {
   const doc = root.ownerDocument;
@@ -93,11 +68,13 @@ export function createSpatialNavigation(root: HTMLElement): SpatialNavigation {
 
   function move(dir: Direction): boolean {
     const current = doc.activeElement;
-    if (!(current instanceof HTMLElement) || current === root || !root.contains(current)) {
+    if (!(current instanceof HTMLElement) || current === doc.body || current === root) {
       const entry = entryPoint();
       entry?.focus();
       return entry !== undefined;
     }
+    // Focus is in a layer outside the root (a portal dialog): it owns its navigation.
+    if (!root.contains(current)) return false;
     // Never leave an open modal by arrows.
     const modal = current.closest('[aria-modal="true"]');
     const scope = modal && root.contains(modal) ? modal : root;
@@ -131,16 +108,6 @@ export function createSpatialNavigation(root: HTMLElement): SpatialNavigation {
     sync();
   };
 
-  const onKeyDown = (e: KeyboardEvent) => {
-    const dir = KEY_DIRECTION[e.key];
-    if (!dir || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-    const t = e.target;
-    // Focus lost to <body> is in scope: the next arrow brings it back.
-    if (!(t instanceof Node) || (t !== doc.body && !root.contains(t))) return;
-    if ((dir === "left" || dir === "right") && ownsHorizontalArrows(t)) return;
-    if (move(dir)) e.preventDefault();
-  };
-
   // The focused item can be unmounted (list refresh, screen change): focus would fall on
   // <body> with no indicator, so it is put back on the zone's remembered item.
   const observer = new MutationObserver(() => {
@@ -154,9 +121,6 @@ export function createSpatialNavigation(root: HTMLElement): SpatialNavigation {
 
   sync();
   root.addEventListener("focusin", onFocusIn);
-  // On the document, not the root: React handles events at its container, so a listener
-  // below it would run before the widgets had a chance to call preventDefault.
-  doc.addEventListener("keydown", onKeyDown);
   observer.observe(root, {
     childList: true,
     subtree: true,
@@ -168,7 +132,6 @@ export function createSpatialNavigation(root: HTMLElement): SpatialNavigation {
     move,
     destroy() {
       root.removeEventListener("focusin", onFocusIn);
-      doc.removeEventListener("keydown", onKeyDown);
       observer.disconnect();
     },
   };
