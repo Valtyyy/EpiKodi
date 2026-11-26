@@ -5,6 +5,7 @@ import type {
   SettingEntry,
   SettingValue,
   SettingsSnapshot,
+  UiEvent,
 } from "../index";
 import type { ApiClient } from "./client";
 
@@ -40,6 +41,7 @@ function validate(entry: SettingEntry, value: SettingValue): AppError | null {
 export function createFakeApiClient(initial: SettingsSnapshot) {
   const snapshot: SettingsSnapshot = structuredClone(initial);
   const secretValues = new Map<SecretKey, string>();
+  const uiListeners = new Set<(event: UiEvent) => void>();
 
   const snap = () => structuredClone(snapshot);
   const setStatus = (key: SecretKey, patch: Partial<SecretStatus>): SecretStatus => {
@@ -54,7 +56,11 @@ export function createFakeApiClient(initial: SettingsSnapshot) {
     return null;
   };
 
-  const client: ApiClient & { _secretValue(key: SecretKey): string | undefined } = {
+  const client: ApiClient & {
+    _secretValue(key: SecretKey): string | undefined;
+    /** Plays the backend's part: sends an event as `UiBridge` would. */
+    _emitUiEvent(event: UiEvent): void;
+  } = {
     getSettings: async () => snap(),
     updateSettings: async (patch) => {
       for (const change of patch.changes) {
@@ -89,7 +95,12 @@ export function createFakeApiClient(initial: SettingsSnapshot) {
       secretValues.delete(key);
       return setStatus(key, { configured: false, source: "none", state: "ok", message: undefined });
     },
+    onUiEvent: (listener) => {
+      uiListeners.add(listener);
+      return () => uiListeners.delete(listener);
+    },
     _secretValue: (key) => secretValues.get(key),
+    _emitUiEvent: (event) => uiListeners.forEach((l) => l(event)),
   };
   return client;
 }

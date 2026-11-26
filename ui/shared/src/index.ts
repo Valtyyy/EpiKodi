@@ -15,12 +15,13 @@ export type { SettingValue } from "./generated/SettingValue";
 export type { SettingWarning } from "./generated/SettingWarning";
 export type { SettingsPatch } from "./generated/SettingsPatch";
 export type { SettingsSnapshot } from "./generated/SettingsSnapshot";
+export type { InputAction } from "./generated/InputAction";
+export type { UiEvent } from "./generated/UiEvent";
 
 export {
   useRovingGrid,
   findNext,
   createSpatialNavigation,
-  useSpatialNavigation,
   focusRing,
   NAV_ITEM_ATTR,
   NAV_ZONE_ATTR,
@@ -34,6 +35,9 @@ export type {
   Rect,
   SpatialNavigation,
 } from "./focus";
+
+export { ACTION_KEY, createInputHandler } from "./input";
+export type { FocusMover, InputHandler } from "./input";
 
 export { ApiProvider, useApi, createFakeApiClient } from "./api";
 export type { ApiClient } from "./api";
