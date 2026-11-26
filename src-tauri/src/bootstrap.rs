@@ -6,14 +6,15 @@ use std::sync::Arc;
 use infra::{KeyringSecretStore, ProcessEnvironment, SqliteSettingsRepository, SystemClock};
 use om_core::testing::MemorySettingsRepository;
 use om_core::{
-    AppError, Environment, EventBus, PingService, SecretStore, SettingWarning, SettingsRepository,
-    SettingsService,
+    AppError, Environment, EventBus, InputService, PingService, SecretStore, SettingWarning,
+    SettingsRepository, SettingsService, UiBridge,
 };
 use tauri::Manager;
 
 /// Every service of the application. Add new services here.
 pub struct Services {
     pub events: EventBus,
+    pub input: InputService,
     pub ping: PingService,
     pub settings: SettingsService,
 }
@@ -23,7 +24,7 @@ pub struct Services {
 /// Always succeeds (§9: the app must start): if the settings database cannot
 /// be opened, settings live in a throw-away in-memory database and the user is
 /// warned that changes will not be kept.
-pub async fn build(data_dir: &Path) -> Services {
+pub async fn build(data_dir: &Path, ui: Arc<dyn UiBridge>) -> Services {
     let clock = Arc::new(SystemClock);
     let (repo, warnings) = match open_database(data_dir, clock.clone()).await {
         Ok(repo) => (repo, Vec::new()),
@@ -48,6 +49,7 @@ pub async fn build(data_dir: &Path) -> Services {
         repo,
         Arc::new(ProcessEnvironment),
         Arc::new(KeyringSecretStore::new()),
+        ui,
         warnings,
     )
     .await
@@ -68,10 +70,12 @@ async fn assemble(
     repo: Arc<dyn SettingsRepository>,
     env: Arc<dyn Environment>,
     secrets: Arc<dyn SecretStore>,
+    ui: Arc<dyn UiBridge>,
     warnings: Vec<SettingWarning>,
 ) -> Services {
     let events = EventBus::new();
     Services {
+        input: InputService::new(ui),
         ping: PingService::new(Arc::new(SystemClock), events.clone()),
         settings: SettingsService::load_with_warnings(repo, env, secrets, warnings).await,
         events,
@@ -83,11 +87,13 @@ async fn assemble(
 pub fn register<R: tauri::Runtime>(app: &impl Manager<R>, services: Services) {
     let Services {
         events,
+        input,
         ping,
         settings,
     } = services;
 
     app.manage(events);
+    app.manage(input);
     app.manage(ping);
     app.manage(settings);
 }
@@ -95,7 +101,9 @@ pub fn register<R: tauri::Runtime>(app: &impl Manager<R>, services: Services) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use om_core::testing::{MemoryEnvironment, MemorySecretStore, MemorySettingsRepository};
+    use om_core::testing::{
+        MemoryEnvironment, MemorySecretStore, MemorySettingsRepository, RecordingUiBridge,
+    };
 
     #[tokio::test]
     async fn every_service_is_managed_after_register() {
@@ -104,6 +112,7 @@ mod tests {
             Arc::new(MemorySettingsRepository::default()),
             Arc::new(MemoryEnvironment::default()),
             Arc::new(MemorySecretStore::default()),
+            Arc::new(RecordingUiBridge::default()),
             Vec::new(),
         )
         .await;
@@ -111,6 +120,7 @@ mod tests {
 
         // Extend this list for every service added to `Services`.
         assert!(app.try_state::<EventBus>().is_some(), "EventBus");
+        assert!(app.try_state::<InputService>().is_some(), "InputService");
         assert!(app.try_state::<PingService>().is_some(), "PingService");
         assert!(
             app.try_state::<SettingsService>().is_some(),
@@ -122,13 +132,14 @@ mod tests {
 #[cfg(test)]
 mod fallback_tests {
     use super::*;
+    use om_core::testing::RecordingUiBridge;
 
     #[tokio::test]
     async fn unopenable_database_falls_back_with_a_storage_warning() {
         // A regular file where the data directory should be: creation fails.
         let blocker = std::env::temp_dir().join(format!("om-blocker-{}", std::process::id()));
         std::fs::write(&blocker, b"x").unwrap();
-        let services = build(&blocker.join("sub")).await;
+        let services = build(&blocker.join("sub"), Arc::new(RecordingUiBridge::default())).await;
         let snapshot = services.settings.snapshot().await;
         std::fs::remove_file(&blocker).unwrap();
         let w = snapshot
