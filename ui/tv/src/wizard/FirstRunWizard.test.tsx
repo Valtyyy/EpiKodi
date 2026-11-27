@@ -139,6 +139,24 @@ describe("first-run wizard", () => {
     expect(document.body.innerHTML).not.toContain(SECRET);
   });
 
+  it("shares the settings cache: the settings screen shows what the wizard saved", async () => {
+    const { user, client } = setup();
+    const getSettings = vi.spyOn(client, "getSettings");
+    await stepHeading(/Ajouter/);
+    await user.click(screen.getByRole("button", { name: "Suivant" }));
+    await user.click(await screen.findByRole("button", { name: "Saisir Clé API TMDB" }));
+    await user.keyboard("0123456789abcdef");
+    await user.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Valider" }),
+    );
+    await user.click(await screen.findByRole("button", { name: "Passer l'assistant" }));
+    expect(await settingsHeading()).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remplacer Clé API TMDB" })).toBeInTheDocument();
+    expect(screen.getByText("Configurée")).toBeInTheDocument();
+    // Read once at startup; every later screen uses the cache.
+    expect(getSettings).not.toHaveBeenCalled();
+  });
+
   it("shows the error but lets the user continue when completion fails", async () => {
     const { user, client } = setup();
     vi.spyOn(client, "updateSettings").mockRejectedValue({ code: "io", message: "Disque plein" });

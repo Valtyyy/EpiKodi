@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { createInputHandler, createSpatialNavigation, useApi } from "@om/shared";
+import { createInputHandler, createSpatialNavigation, useTvApi } from "@om/shared";
 
 /**
  * Mounts the TV's single input path on its subtree: living-room keys and actions from
@@ -7,7 +7,7 @@ import { createInputHandler, createSpatialNavigation, useApi } from "@om/shared"
  * navigation.
  */
 export function TvInput({ children }: { children: ReactNode }) {
-  const api = useApi();
+  const api = useTvApi();
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

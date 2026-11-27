@@ -74,6 +74,26 @@ export default tseslint.config(
     },
   },
   {
+    // Components reach the backend only through the injected ApiClient (ARCHITECTURE.md
+    // section 6): Tauri stays in the TV's client implementation.
+    files: ["ui/**/*.{ts,tsx}"],
+    ignores: ["ui/tv/src/api/tauri.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@tauri-apps/*"],
+              message:
+                "Use the ApiClient from useApi()/useTvApi(); only ui/tv/src/api/tauri.ts talks to Tauri.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["*.js", "**/*.config.{js,ts}", "**/vite.config.ts"],
     languageOptions: { globals: { ...globals.node } },
   },

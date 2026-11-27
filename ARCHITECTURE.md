@@ -467,19 +467,28 @@ Règles à appliquer :
 
 ### Injection côté interface
 
-La télé et le téléphone partagent des composants grâce à un fournisseur de client, équivalent de `State` côté TypeScript :
+La télé et le téléphone partagent des composants grâce à un fournisseur de client, équivalent de `State` côté TypeScript. L'interface est séparée par rôle : `ApiClient` contient ce que les deux appareils peuvent faire, `TvApiClient` l'étend avec ce qui est réservé à la télé. L'API de contrôle n'ayant aucune route de paramètres (§8), un composant du téléphone qui appellerait les réglages ne compile pas.
 
 ```tsx
-// ui/shared : interface commune, types générés depuis Rust par ts-rs
+// ui/shared : interfaces, types générés depuis Rust par ts-rs
 export interface ApiClient {
-  listMovies(query: MovieQuery): Promise<Page<MovieDto>>;
-  subscribe(handler: (event: AppEvent) => void): () => void;
+  sendInput(action: InputAction): Promise<void>;
+  // plus tard : listMovies(query), événements player.state...
+}
+export interface TvApiClient extends ApiClient {
+  getSettings(): Promise<SettingsSnapshot>;
+  updateSettings(patch: SettingsPatch): Promise<SettingsSnapshot>;
+  setSecret(key: SecretKey, value: string): Promise<SecretStatus>;
+  clearSecret(key: SecretKey): Promise<SecretStatus>;
+  onUiEvent(listener: (event: UiEvent) => void): () => void;
 }
 
-// ui/tv : <ApiProvider client={new TauriApiClient()}>
-// ui/remote : <ApiProvider client={new HttpApiClient()}>
-// tests : <ApiProvider client={fakeClient}>
+// ui/tv : <ApiProvider client={createTauriApiClient()}>   (TvApiClient)
+// ui/remote : <ApiProvider client={createHttpApiClient()}> (ApiClient)
+// tests : <ApiProvider client={createFakeApiClient(snapshot)}>
 ```
+
+`ApiProvider` fournit aussi le cache TanStack Query. Les composants lisent le client par `useApi()`, ou `useTvApi()` pour un composant propre à la télé. Seul `ui/tv/src/api/tauri.ts` importe `@tauri-apps/*`, ce que vérifie ESLint.
 
 Les erreurs ont un format commun, `{ code, message, field?, suggestion? }`. Les formulaires peuvent ainsi lier l'erreur au champ concerné et proposer une correction, comme l'exige le sujet.
 

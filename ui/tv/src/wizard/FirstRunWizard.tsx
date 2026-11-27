@@ -1,24 +1,21 @@
 import { useEffect, useRef, useState } from "react";
-import { useApi, useRovingGrid, type AppError, type SecretStatus } from "@om/shared";
+import { useRovingGrid, type AppError } from "@om/shared";
+import { useSecretStatusUpdate, useSettings, useUpdateSettings } from "../api/settings";
 import { formatError } from "../format";
 import { controlClass } from "../settings/Field";
 import { FIRST_RUN_KEY } from "./constants";
 import { wizardSteps } from "./steps";
 
 export interface FirstRunWizardProps {
-  secrets: SecretStatus[];
   onDone: () => void;
   steps?: typeof wizardSteps;
 }
 
-export function FirstRunWizard({
-  secrets: initialSecrets,
-  onDone,
-  steps = wizardSteps,
-}: FirstRunWizardProps) {
-  const api = useApi();
+export function FirstRunWizard({ onDone, steps = wizardSteps }: FirstRunWizardProps) {
+  const secrets = useSettings().data?.secrets ?? [];
+  const updateSettings = useUpdateSettings();
+  const onSecretChange = useSecretStatusUpdate();
   const [index, setIndex] = useState(0);
-  const [secrets, setSecrets] = useState(initialSecrets);
   const [failure, setFailure] = useState<string>();
   const heading = useRef<HTMLHeadingElement>(null);
   const continueBtn = useRef<HTMLButtonElement>(null);
@@ -41,7 +38,7 @@ export function FirstRunWizard({
 
   async function complete() {
     try {
-      await api.updateSettings({
+      await updateSettings.mutateAsync({
         changes: [{ key: FIRST_RUN_KEY, value: { type: "bool", value: true } }],
       });
       onDone();
@@ -88,7 +85,7 @@ export function FirstRunWizard({
       <section aria-label={step.title} className="mb-8">
         <step.Component
           secrets={secrets}
-          onSecretChange={(s) => setSecrets((all) => all.map((x) => (x.key === s.key ? s : x)))}
+          onSecretChange={onSecretChange}
           getGridProps={(row, col) => grid.getItemProps(row, col)}
         />
       </section>

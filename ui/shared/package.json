@@ -27,5 +27,8 @@
   },
   "peerDependencies": {
     "react": "^19.1.0"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.107.1"
   }
 }

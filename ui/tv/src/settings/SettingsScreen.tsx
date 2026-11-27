@@ -1,12 +1,6 @@
 import { useEffect, useState } from "react";
-import {
-  useApi,
-  useRovingGrid,
-  type AppError,
-  type SecretStatus,
-  type SettingValue,
-  type SettingsSnapshot,
-} from "@om/shared";
+import { useRovingGrid, type AppError, type SettingValue } from "@om/shared";
+import { useSecretStatusUpdate, useSettings, useUpdateSettings } from "../api/settings";
 import { formatError } from "../format";
 import { SettingField } from "./Field";
 import { SecretField } from "./SecretField";
@@ -14,9 +8,11 @@ import { SecretField } from "./SecretField";
 const SECRETS_SECTION = "Métadonnées";
 
 export function SettingsScreen() {
-  const api = useApi();
-  const [snapshot, setSnapshot] = useState<SettingsSnapshot | null>(null);
-  const [loadError, setLoadError] = useState<string>();
+  const settings = useSettings();
+  const updateSettings = useUpdateSettings();
+  const onSecretChange = useSecretStatusUpdate();
+  const snapshot = settings.data;
+  const loadError = settings.error ? formatError(settings.error) : undefined;
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [announcement, setAnnouncement] = useState("");
 
@@ -26,11 +22,7 @@ export function SettingsScreen() {
     rowLengths: [...visible.map(() => 1), ...secrets.map(() => 2)],
   });
   const { focusActive } = grid;
-  const loaded = snapshot !== null;
-
-  useEffect(() => {
-    api.getSettings().then(setSnapshot, (err) => setLoadError(formatError(err as AppError)));
-  }, [api]);
+  const loaded = snapshot !== undefined;
 
   useEffect(() => {
     if (loaded) focusActive();
@@ -40,8 +32,7 @@ export function SettingsScreen() {
 
   async function commit(key: string, label: string, value: SettingValue) {
     try {
-      const next = await api.updateSettings({ changes: [{ key, value }] });
-      setSnapshot(next);
+      await updateSettings.mutateAsync({ changes: [{ key, value }] });
       setErrors((e) => ({ ...e, [key]: "" }));
       setAnnouncement(`${label} enregistré`);
     } catch (err) {
@@ -50,12 +41,6 @@ export function SettingsScreen() {
       setErrors((prev) => ({ ...prev, [e.field ?? key]: msg }));
       setAnnouncement(msg);
     }
-  }
-
-  function onSecretChange(status: SecretStatus) {
-    setSnapshot(
-      (s) => s && { ...s, secrets: s.secrets.map((x) => (x.key === status.key ? status : x)) },
-    );
   }
 
   const sections: { name: string; entries: typeof visible }[] = [];

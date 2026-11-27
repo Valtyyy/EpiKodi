@@ -1,12 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { ApiClient, UiEvent } from "@om/shared";
+import type { TvApiClient, UiEvent } from "@om/shared";
 
 /** Same name as `UI_EVENT` in src-tauri/src/ui_bridge.rs. */
 const UI_EVENT = "ui-event";
 
-export function createTauriApiClient(): ApiClient {
+/** The only module allowed to import `@tauri-apps/*` (ESLint `no-restricted-imports`). */
+export function createTauriApiClient(): TvApiClient {
   return {
+    sendInput: (action) => invoke("send_input", { action }),
     getSettings: () => invoke("get_settings"),
     updateSettings: (patch) => invoke("update_settings", { patch }),
     setSecret: (key, value) => invoke("set_secret", { key, value }),

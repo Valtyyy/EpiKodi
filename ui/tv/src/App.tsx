@@ -1,12 +1,7 @@
-import { useEffect, useState } from "react";
-import {
-  ApiProvider,
-  useApi,
-  type AppError,
-  type ApiClient,
-  type SettingsSnapshot,
-} from "@om/shared";
+import { useState } from "react";
+import { ApiProvider, type SettingsSnapshot, type TvApiClient } from "@om/shared";
 import { createTauriApiClient } from "./api/tauri";
+import { useSettings } from "./api/settings";
 import { formatError } from "./format";
 import { TvInput } from "./input/TvInput";
 import { SettingsScreen } from "./settings/SettingsScreen";
@@ -21,25 +16,20 @@ function needsWizard(snapshot: SettingsSnapshot): boolean {
 }
 
 function Root() {
-  const api = useApi();
-  const [snapshot, setSnapshot] = useState<SettingsSnapshot>();
-  const [error, setError] = useState<string>();
+  const settings = useSettings();
+  // Set when the wizard is left without its completion being saved (the user chose to go on).
   const [wizardDone, setWizardDone] = useState(false);
 
-  useEffect(() => {
-    api.getSettings().then(setSnapshot, (err) => setError(formatError(err as AppError)));
-  }, [api]);
-
-  if (error) {
+  if (settings.error) {
     return (
       <main className="p-8">
         <p role="alert" className="text-tv-md text-danger">
-          {error}
+          {formatError(settings.error)}
         </p>
       </main>
     );
   }
-  if (!snapshot) {
+  if (!settings.data) {
     return (
       <main className="p-8">
         <p role="status" className="text-tv-md text-content-muted">
@@ -48,13 +38,13 @@ function Root() {
       </main>
     );
   }
-  if (needsWizard(snapshot) && !wizardDone) {
-    return <FirstRunWizard secrets={snapshot.secrets} onDone={() => setWizardDone(true)} />;
+  if (needsWizard(settings.data) && !wizardDone) {
+    return <FirstRunWizard onDone={() => setWizardDone(true)} />;
   }
   return <SettingsScreen />;
 }
 
-function App({ client = tauriClient }: { client?: ApiClient }) {
+function App({ client = tauriClient }: { client?: TvApiClient }) {
   return (
     <ApiProvider client={client}>
       <TvInput>

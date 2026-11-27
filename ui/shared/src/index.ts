@@ -39,8 +39,15 @@ export type {
 export { ACTION_KEY, createInputHandler } from "./input";
 export type { FocusMover, InputHandler } from "./input";
 
-export { ApiProvider, useApi, createFakeApiClient } from "./api";
-export type { ApiClient } from "./api";
+export {
+  ApiProvider,
+  createFakeApiClient,
+  createQueryClient,
+  isTvApiClient,
+  useApi,
+  useTvApi,
+} from "./api";
+export type { ApiClient, ApiProviderProps, TvApiClient } from "./api";
 
 export {
   applyTheme,

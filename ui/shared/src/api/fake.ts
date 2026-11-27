@@ -7,7 +7,7 @@ import type {
   SettingsSnapshot,
   UiEvent,
 } from "../index";
-import type { ApiClient } from "./client";
+import type { TvApiClient } from "./client";
 
 function invalid(field: string, message: string): AppError {
   return { code: "invalid", message, field };
@@ -34,7 +34,7 @@ function validate(entry: SettingEntry, value: SettingValue): AppError | null {
 }
 
 /**
- * In-memory ApiClient mimicking the Rust semantics (bounds, env locks, write-only
+ * In-memory TvApiClient mimicking the Rust semantics (bounds, env locks, write-only
  * secrets) closely enough for component tests. Secret values are kept in a private
  * map for inspection by tests only and are never part of any returned object.
  */
@@ -56,7 +56,7 @@ export function createFakeApiClient(initial: SettingsSnapshot) {
     return null;
   };
 
-  const client: ApiClient & {
+  const client: TvApiClient & {
     _secretValue(key: SecretKey): string | undefined;
     /** Plays the backend's part: sends an event as `UiBridge` would. */
     _emitUiEvent(event: UiEvent): void;
@@ -94,6 +94,10 @@ export function createFakeApiClient(initial: SettingsSnapshot) {
       if (err) throw err;
       secretValues.delete(key);
       return setStatus(key, { configured: false, source: "none", state: "ok", message: undefined });
+    },
+    // Plays the backend loop: InputService sends the action back through the UiBridge.
+    sendInput: async (action) => {
+      uiListeners.forEach((l) => l({ type: "input", action }));
     },
     onUiEvent: (listener) => {
       uiListeners.add(listener);

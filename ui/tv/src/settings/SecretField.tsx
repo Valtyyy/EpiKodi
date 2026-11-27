@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { useApi, type AppError, type GridItemProps, type SecretStatus } from "@om/shared";
+import { useTvApi, type AppError, type GridItemProps, type SecretStatus } from "@om/shared";
 import { formatError } from "../format";
 import { controlClass } from "./Field";
 import { KeyboardDialog } from "./KeyboardDialog";
@@ -17,7 +17,7 @@ export interface SecretFieldProps {
  * keyboard dialog's state, is dropped on submit and is never rendered back.
  */
 export function SecretField({ status, onStatusChange, getGridProps }: SecretFieldProps) {
-  const api = useApi();
+  const api = useTvApi();
   const id = useId();
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string>();

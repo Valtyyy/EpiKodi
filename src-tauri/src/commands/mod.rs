@@ -3,5 +3,6 @@
 //! Modules stay public: `generate_handler!` needs the hidden items the
 //! `#[tauri::command]` macro generates next to each command.
 
+pub mod input;
 pub mod ping;
 pub mod settings;
